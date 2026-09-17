@@ -1,395 +1,579 @@
 import React, { useEffect, useState } from 'react';
-import { FeeStructureRecord } from '../types';
 import { ApiClient } from '../services/api';
 import { PageHeader } from '../components/PageHeader';
-import { StatusBadge } from '../components/StatusBadge';
-import { LoadingState } from '../components/LoadingState';
 import {
+  Calculator,
+  FileSpreadsheet,
   Layers,
-  Coins,
-  Calendar,
-  GraduationCap,
-  Tag,
-  Route,
-  ChevronDown,
-  ChevronUp,
-  ShieldCheck,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  RefreshCw,
+  PlusCircle,
 } from 'lucide-react';
 
-export const FeeManagementPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<
-    'structures' | 'heads' | 'years' | 'programs' | 'categories' | 'routes'
-  >('structures');
-  const [structures, setStructures] = useState<FeeStructureRecord[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [expandedStructureId, setExpandedStructureId] = useState<string | null>(null);
+interface StudentBrief {
+  id: string;
+  roll_no: string;
+  name: string;
+  email: string;
+  program_code: string;
+  category: string;
+  admission_route: string;
+}
 
-  const fetchStructures = async () => {
-    setLoading(true);
+interface FeeItemPreview {
+  head_id: string;
+  head_code: string;
+  head_name: string;
+  priority: number;
+  gross_amount: number;
+  scholarship_deduction: number;
+  concession_deduction: number;
+  waiver_deduction: number;
+  net_amount: number;
+  is_refundable: boolean;
+}
+
+interface CalculationPreviewResult {
+  student_id: string;
+  student_roll: string;
+  student_name: string;
+  program_code: string;
+  academic_year: string;
+  regulation: string;
+  category: string;
+  gross_demand: number;
+  total_scholarship: number;
+  total_concession: number;
+  total_waiver: number;
+  net_demand: number;
+  items: FeeItemPreview[];
+  applied_rules: string[];
+}
+
+interface FeeManagementPageProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const FeeManagementPage: React.FC<FeeManagementPageProps> = ({ onNavigate }) => {
+  const [students, setStudents] = useState<StudentBrief[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState<boolean>(true);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  
+  // Simulator inputs
+  const [scholarshipPct, setScholarshipPct] = useState<string>('75');
+  const [concessionFlat, setConcessionFlat] = useState<string>('0');
+  const [waiverFlat, setWaiverFlat] = useState<string>('0');
+  const [installmentCount, setInstallmentCount] = useState<number>(3);
+
+  // Simulation state
+  const [calculating, setCalculating] = useState<boolean>(false);
+  const [previewResult, setPreviewResult] = useState<CalculationPreviewResult | null>(null);
+  const [calcError, setCalcError] = useState<string | null>(null);
+
+  // Generation state
+  const [generating, setGenerating] = useState<boolean>(false);
+  const [generationSuccess, setGenerationSuccess] = useState<string | null>(null);
+
+  const fetchStudents = async () => {
+    setLoadingStudents(true);
     try {
-      const data = await ApiClient.get<FeeStructureRecord[]>('/ledger/fee-structures');
-      setStructures(data);
-      if (data.length > 0) {
-        setExpandedStructureId(data[0].id);
+      const data = await ApiClient.get<any[]>('/ledger/students?limit=100');
+      const briefList: StudentBrief[] = data.map((s) => ({
+        id: s.id,
+        roll_no: s.roll_no,
+        name: s.name,
+        email: s.email,
+        program_code: s.program_code,
+        category: s.category || 'General',
+        admission_route: s.admission_route || 'EAMCET',
+      }));
+      setStudents(briefList);
+      if (briefList.length > 0) {
+        setSelectedStudentId(briefList[0].id);
       }
     } catch (err) {
-      console.error('Failed to load fee structures:', err);
+      console.error('Failed to load students for calculator:', err);
     } finally {
-      setLoading(false);
+      setLoadingStudents(false);
     }
   };
 
   useEffect(() => {
-    fetchStructures();
+    fetchStudents();
   }, []);
+
+  // Run calculation simulation
+  const handleCalculate = async () => {
+    if (!selectedStudentId) return;
+    setCalculating(true);
+    setCalcError(null);
+    setGenerationSuccess(null);
+    try {
+      const payload = {
+        student_id: selectedStudentId,
+        scholarship_percentage: parseFloat(scholarshipPct) || 0,
+        concession_flat: parseFloat(concessionFlat) || 0,
+        waiver_flat: parseFloat(waiverFlat) || 0,
+      };
+      const result = await ApiClient.post<CalculationPreviewResult>('/fee-demands/calculate', payload);
+      setPreviewResult(result);
+    } catch (err: any) {
+      setCalcError(err.message || 'Fee calculation simulation failed.');
+    } finally {
+      setCalculating(false);
+    }
+  };
+
+  // Run initial calculation when students load
+  useEffect(() => {
+    if (selectedStudentId) {
+      handleCalculate();
+    }
+  }, [selectedStudentId]);
+
+  // Generate Official Demand
+  const handleGenerateOfficialDemand = async () => {
+    if (!selectedStudentId || !previewResult) return;
+    setGenerating(true);
+    setCalcError(null);
+    setGenerationSuccess(null);
+    try {
+      const payload = {
+        student_id: selectedStudentId,
+        scholarship_amount: previewResult.total_scholarship,
+        scholarship_name: previewResult.total_scholarship > 0 ? 'Merit Entrance Scholarship' : undefined,
+        concession_amount: previewResult.total_concession,
+        concession_reason: previewResult.total_concession > 0 ? 'Special Concession' : undefined,
+        waiver_amount: previewResult.total_waiver,
+        waiver_reason: previewResult.total_waiver > 0 ? 'Special Fee Waiver' : undefined,
+      };
+      const resp = await ApiClient.post<any>('/fee-demands/generate', payload);
+      setGenerationSuccess(
+        `Official Fee Demand ${resp.demand_code || 'FEE-DEMAND'} committed to ledger with Net Amount ₹${resp.net_demand?.toLocaleString()}!`
+      );
+    } catch (err: any) {
+      setCalcError(err.message || 'Demand generation failed.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const selectedStudent = students.find((s) => s.id === selectedStudentId);
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       {/* 1. Page Header */}
       <PageHeader
-        title="Fee Management & Master Configuration"
-        subtitle="Versioned institutional fee structures, head priorities, academic years, and regulation rules"
+        title="Fee Management & Calculation Engine"
+        subtitle="Operational fee assessment, deterministic scholarship deduction simulator, and official demand generation"
         breadcrumbs={[
           { label: 'ERP Shell', href: '#' },
           { label: 'Student & Fees', href: '#' },
-          { label: 'Fee Management' }
+          { label: 'Fee Management' },
         ]}
       />
 
-      {/* 2. Navigation Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto gap-1 text-xs">
-        {[
-          { id: 'structures', label: 'Fee Structures (4)', icon: Layers },
-          { id: 'heads', label: 'Fee Heads (8 Priority Heads)', icon: Coins },
-          { id: 'years', label: 'Academic Years', icon: Calendar },
-          { id: 'programs', label: 'Programs (5)', icon: GraduationCap },
-          { id: 'categories', label: 'Student Categories', icon: Tag },
-          { id: 'routes', label: 'Admission Routes', icon: Route },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center space-x-2 px-4 py-2.5 font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-                isActive
-                  ? 'border-brand-600 text-brand-700 bg-brand-50/40'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-brand-600' : 'text-slate-400'}`} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+      {/* 2. Segregated Navigation Banner */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+        <div className="bg-gradient-to-br from-blue-700 to-blue-900 text-white p-4 rounded-2xl shadow-md space-y-2 border border-blue-600">
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-white/10 text-white">
+              <Calculator className="w-5 h-5" />
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-500/40 px-2 py-0.5 rounded text-blue-100">
+              Active View
+            </span>
+          </div>
+          <div>
+            <h3 className="font-bold text-sm">Fee Management Hub</h3>
+            <p className="text-xs text-blue-100/80 leading-relaxed">
+              Real-time fee simulator, scholarship rules, and official demand generation.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onNavigate && onNavigate('fee-demands')}
+          className="bg-white hover:bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-xs space-y-2 text-left transition-all hover:border-brand-400 cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-slate-100 text-slate-700 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
+              <FileSpreadsheet className="w-5 h-5" />
+            </span>
+            <span className="text-xs text-slate-400 group-hover:text-brand-600 flex items-center gap-1 font-semibold">
+              Go to View <ArrowRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-slate-900">Fee Demands (200)</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Inspect all generated student ledger demand notices, status, and installment plans.
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onNavigate && onNavigate('fee-structures')}
+          className="bg-white hover:bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-xs space-y-2 text-left transition-all hover:border-brand-400 cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-slate-100 text-slate-700 group-hover:bg-indigo-50 group-hover:text-indigo-700 transition-colors">
+              <Layers className="w-5 h-5" />
+            </span>
+            <span className="text-xs text-slate-400 group-hover:text-brand-600 flex items-center gap-1 font-semibold">
+              Go to View <ArrowRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-slate-900">Fee Structures (22)</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Master catalog of versioned degree fee structures, 8 fee heads, and admission quotas.
+            </p>
+          </div>
+        </button>
       </div>
 
-      {/* 3. Tab Content */}
-      {loading ? (
-        <LoadingState message="Loading fee structures and master configuration..." />
-      ) : (
-        <div className="space-y-6">
-          {/* TAB 1: Fee Structures */}
-          {activeTab === 'structures' && (
-            <div className="space-y-4">
-              <div className="bg-blue-50/60 border border-blue-200/70 rounded-xl p-3.5 flex items-center justify-between text-xs text-blue-900">
-                <div className="flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4 text-brand-600" />
-                  <span>
-                    <span className="font-bold">Versioned Structures:</span> All fee heads have deterministic priority allocation orders and refundability flags.
-                  </span>
+      {/* 3. Interactive Calculation & Assessment Engine */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Input Parameters Card (5 Cols) */}
+        <div className="lg:col-span-5 space-y-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Calculator className="w-4 h-4 text-brand-600" />
+                  Fee Assessment Simulator
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Select student to simulate priority head deductions and installments.
+                </p>
+              </div>
+            </div>
+
+            {/* Student Selector */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Select Student Profile
+              </label>
+              {loadingStudents ? (
+                <div className="text-xs text-slate-400 py-2">Loading students registry...</div>
+              ) : (
+                <select
+                  value={selectedStudentId}
+                  onChange={(e) => setSelectedStudentId(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-medium text-slate-900 focus:outline-none focus:border-brand-500 focus:bg-white"
+                >
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.roll_no} - {s.name} ({s.program_code})
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {selectedStudent && (
+                <div className="mt-2 bg-blue-50/70 border border-blue-200 rounded-xl p-2.5 text-xs text-blue-900 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="font-bold">{selectedStudent.name}</span>
+                    <span className="font-mono font-bold text-blue-700">{selectedStudent.roll_no}</span>
+                  </div>
+                  <div className="text-[11px] text-blue-700 flex items-center gap-2">
+                    <span>Program: <strong>{selectedStudent.program_code}</strong></span>
+                    <span>•</span>
+                    <span>Quota: <strong>{selectedStudent.category}</strong></span>
+                  </div>
                 </div>
-                <span className="font-mono font-semibold bg-white px-2 py-0.5 rounded border border-blue-200">
-                  R23 Regulation Active
+              )}
+            </div>
+
+            {/* Deduction Sliders & Inputs */}
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800">Tuition Scholarship (%):</span>
+                <span className="font-mono font-bold text-sm text-brand-700 bg-brand-50 px-2 py-0.5 rounded border border-brand-200">
+                  {scholarshipPct}%
                 </span>
               </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={scholarshipPct}
+                onChange={(e) => setScholarshipPct(e.target.value)}
+                className="w-full accent-brand-600 cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                <span>0% (No Grant)</span>
+                <span>25% (Tier 3)</span>
+                <span>50% (Tier 2)</span>
+                <span>75% (JEE Merit)</span>
+                <span>100% (Full)</span>
+              </div>
+            </div>
 
-              {structures.map((fs) => {
-                const isExpanded = expandedStructureId === fs.id;
-                return (
-                  <div
-                    key={fs.id}
-                    className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs transition-all"
+            {/* Flat Concession & Flat Waiver Inputs */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                  Concession (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="5000"
+                  value={concessionFlat}
+                  onChange={(e) => setConcessionFlat(e.target.value)}
+                  placeholder="0"
+                  className="w-full text-xs font-mono bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                  Special Waiver (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="5000"
+                  value={waiverFlat}
+                  onChange={(e) => setWaiverFlat(e.target.value)}
+                  placeholder="0"
+                  className="w-full text-xs font-mono bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-brand-500"
+                />
+              </div>
+            </div>
+
+            {/* Tranche Count */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                Installment Tranches Partition
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setInstallmentCount(count)}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                      installmentCount === count
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
                   >
-                    {/* Structure Summary Header Bar */}
-                    <div
-                      onClick={() => setExpandedStructureId(isExpanded ? null : fs.id)}
-                      className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/80 transition-colors"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono font-bold text-sm text-brand-700">
-                            {fs.program_code}
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className="font-semibold text-slate-900 text-sm">{fs.program_name}</span>
-                          <span className="text-[10px] bg-slate-100 font-mono px-2 py-0.5 rounded text-slate-600 border border-slate-200">
-                            v{fs.version}.0
-                          </span>
-                        </div>
-                        <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2">
-                          <span>AY: <strong className="text-slate-700">{fs.academic_year}</strong></span>
-                          <span>•</span>
-                          <span>Reg: <strong className="text-slate-700">{fs.regulation}</strong></span>
-                          <span>•</span>
-                          <span>Category: <strong className="text-slate-700">{fs.category}</strong></span>
-                          <span>•</span>
-                          <span>Route: <strong className="text-slate-700">{fs.admission_route}</strong></span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-4">
-                        <div className="text-right">
-                          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-                            Total Annual Fee
-                          </div>
-                          <div className="text-base font-bold font-mono text-slate-900">
-                            ₹{fs.total_amount.toLocaleString()}
-                          </div>
-                        </div>
-
-                        <StatusBadge status={fs.status} />
-
-                        <button className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200">
-                          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Expandable Fee Head Items Breakdown */}
-                    {isExpanded && (
-                      <div className="p-5 border-t border-slate-100 bg-slate-50/50 space-y-3 animate-in fade-in duration-150">
-                        <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                          <span>Itemized Fee Heads Breakdown & Priority Allocation Chain</span>
-                          <span className="text-[11px] text-slate-500 font-mono">
-                            Effective: {fs.effective_from} to {fs.effective_to || 'Ongoing'}
-                          </span>
-                        </div>
-
-                        <div className="overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-xs">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold text-[10px]">
-                              <tr>
-                                <th className="py-2.5 px-3">Priority</th>
-                                <th className="py-2.5 px-3">Head Code</th>
-                                <th className="py-2.5 px-3">Fee Head Name</th>
-                                <th className="py-2.5 px-3">Refundable</th>
-                                <th className="py-2.5 px-3 text-right">Amount (₹)</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 text-slate-700">
-                              {fs.items.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50/60">
-                                  <td className="py-2 px-3">
-                                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold inline-flex items-center justify-center text-[10px]">
-                                      P{item.priority}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3 font-mono font-bold text-slate-800">{item.head_code}</td>
-                                  <td className="py-2 px-3 font-medium text-slate-900">{item.head_name}</td>
-                                  <td className="py-2 px-3">
-                                    {item.is_refundable ? (
-                                      <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] font-semibold border border-emerald-200">
-                                        Yes (Caution/Hostel)
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-500 text-[10px]">Non-Refundable</span>
-                                    )}
-                                  </td>
-                                  <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                                    ₹{item.amount.toLocaleString()}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot className="bg-slate-50/80 font-bold text-slate-900 border-t border-slate-200">
-                              <tr>
-                                <td colSpan={4} className="py-2.5 px-3 text-right">
-                                  Total Structure Fee Demand:
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono text-brand-700">
-                                  ₹{fs.total_amount.toLocaleString()}
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* TAB 2: Fee Heads */}
-          {activeTab === 'heads' && (
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
-              <h3 className="text-sm font-bold text-slate-900">Standard Institutional Fee Heads</h3>
-              <p className="text-xs text-slate-500">
-                Fee heads govern priority-based payment allocation order (P1 to P8) in compliance with university financial regulations.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                {[
-                  { code: 'TUITION', name: 'Tuition Fee', priority: 'Priority 1', refundable: 'No', desc: 'Core academic instructional fee' },
-                  { code: 'EXAM', name: 'Examination Fee', priority: 'Priority 2', refundable: 'No', desc: 'Mid-term and end-sem assessment charges' },
-                  { code: 'LAB', name: 'Laboratory Fee', priority: 'Priority 3', refundable: 'No', desc: 'Equipment and consumable laboratory maintenance' },
-                  { code: 'LIBRARY', name: 'Library & Digital Fee', priority: 'Priority 4', refundable: 'No', desc: 'Journals, IEEE digital access and book reserves' },
-                  { code: 'HOSTEL', name: 'Hostel & Residence', priority: 'Priority 5', refundable: 'Partial', desc: 'Boarding, mess, and amenities' },
-                  { code: 'TRANSPORT', name: 'Campus Transport', priority: 'Priority 6', refundable: 'No', desc: 'Bus route connectivity across Guntur & Vijayawada' },
-                  { code: 'CAUTION', name: 'Caution Deposit', priority: 'Priority 7', refundable: '100% Refundable', desc: 'Returnable on program completion' },
-                  { code: 'ONE_TIME', name: 'One-Time Charges', priority: 'Priority 8', refundable: 'No', desc: 'Admission kit, identity card, registration' },
-                ].map((head, idx) => (
-                  <div key={idx} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-brand-700 text-[11px]">{head.code}</span>
-                      <span className="text-[10px] bg-brand-100 text-brand-800 font-bold px-1.5 py-0.5 rounded">
-                        {head.priority}
-                      </span>
-                    </div>
-                    <div className="font-semibold text-slate-900 text-xs">{head.name}</div>
-                    <p className="text-[11px] text-slate-500 leading-snug">{head.desc}</p>
-                    <div className="text-[10px] text-slate-600 pt-1 border-t border-slate-200 flex justify-between font-mono">
-                      <span>Refund:</span>
-                      <span className="font-semibold text-emerald-700">{head.refundable}</span>
-                    </div>
-                  </div>
+                    {count} {count === 1 ? 'Full Pay' : 'Tranches'}
+                  </button>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* TAB 3: Academic Years */}
-          {activeTab === 'years' && (
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
-              <h3 className="text-sm font-bold text-slate-900">Academic Years & Calendar</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-emerald-900 text-sm">AY 2026-27</span>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold text-[10px]">
-                      CURRENT ACTIVE
-                    </span>
-                  </div>
-                  <p className="text-slate-600 text-[11px]">July 1, 2026 – June 30, 2027</p>
-                  <div className="text-[11px] text-emerald-800 font-medium pt-2 border-t border-emerald-200">
-                    28 Enrolled Students • Regulation R23
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-sm">AY 2025-26</span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium text-[10px]">
-                      CONCLUDED
-                    </span>
-                  </div>
-                  <p className="text-slate-600 text-[11px]">July 1, 2025 – June 30, 2026</p>
-                  <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-200">
-                    Archived Ledger History
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-sm">AY 2024-25</span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium text-[10px]">
-                      ARCHIVED
-                    </span>
-                  </div>
-                  <p className="text-slate-600 text-[11px]">July 1, 2024 – June 30, 2025</p>
-                  <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-200">
-                    Historical Financial Audits
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: Programs */}
-          {activeTab === 'programs' && (
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
-              <h3 className="text-sm font-bold text-slate-900">Configured Academic Programs</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
-                {[
-                  { code: 'BTECH-CSE', name: 'B.Tech Computer Science & Engineering', duration: '4 Years (8 Semesters)', fee: '₹1,78,000 / yr' },
-                  { code: 'BTECH-ECE', name: 'B.Tech Electronics & Communication', duration: '4 Years (8 Semesters)', fee: '₹1,60,000 / yr' },
-                  { code: 'BTECH-AIDS', name: 'B.Tech Artificial Intelligence & Data Science', duration: '4 Years (8 Semesters)', fee: '₹1,85,000 / yr' },
-                  { code: 'MBA', name: 'Master of Business Administration (Finance)', duration: '2 Years (4 Semesters)', fee: '₹1,40,000 / yr' },
-                  { code: 'MTECH-CSE', name: 'M.Tech Computer Science', duration: '2 Years (4 Semesters)', fee: '₹1,20,000 / yr' },
-                ].map((prog, i) => (
-                  <div key={i} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-brand-700">{prog.code}</span>
-                      <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                        {prog.fee}
-                      </span>
-                    </div>
-                    <div className="font-semibold text-slate-900">{prog.name}</div>
-                    <div className="text-[11px] text-slate-500">{prog.duration}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: Categories & Routes */}
-          {(activeTab === 'categories' || activeTab === 'routes') && (
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
-              <h3 className="text-sm font-bold text-slate-900">
-                {activeTab === 'categories' ? 'Student Fee Categories' : 'Admission Channels & Quotas'}
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                {activeTab === 'categories' ? (
+            {/* Action Buttons */}
+            <div className="pt-3 border-t border-slate-100 space-y-2">
+              <button
+                type="button"
+                onClick={handleCalculate}
+                disabled={calculating}
+                className="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {calculating ? (
                   <>
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="font-mono font-bold text-brand-700">GEN</div>
-                      <div className="font-semibold text-slate-900">General Merit Category</div>
-                      <div className="text-[11px] text-slate-500">Standard tuition baseline</div>
-                    </div>
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="font-mono font-bold text-emerald-700">MERIT</div>
-                      <div className="font-semibold text-slate-900">Merit Scholarship Category</div>
-                      <div className="text-[11px] text-slate-500">Rank-based fee concessions</div>
-                    </div>
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="font-mono font-bold text-purple-700">SPORTS</div>
-                      <div className="font-semibold text-slate-900">Sports & Cultural Quota</div>
-                      <div className="text-[11px] text-slate-500">Athletic scholarship eligibility</div>
-                    </div>
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="font-mono font-bold text-amber-700">MGMT</div>
-                      <div className="font-semibold text-slate-900">Management Category</div>
-                      <div className="text-[11px] text-slate-500">Institutional quota structure</div>
-                    </div>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Evaluating Deterministic Rules...</span>
                   </>
                 ) : (
                   <>
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="font-mono font-bold text-brand-700">EAMCET / V-SAT</div>
-                      <div className="font-semibold text-slate-900">State / University Entrance</div>
-                    </div>
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="font-mono font-bold text-brand-700">JEE_MAINS</div>
-                      <div className="font-semibold text-slate-900">National Entrance Merit</div>
-                    </div>
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="font-mono font-bold text-brand-700">MANAGEMENT</div>
-                      <div className="font-semibold text-slate-900">Direct Institutional Admission</div>
-                    </div>
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="font-mono font-bold text-brand-700">LATERAL_ENTRY</div>
-                      <div className="font-semibold text-slate-900">Polytechnic 2nd Year Diploma</div>
-                    </div>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Re-Calculate Fee Assessment</span>
                   </>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGenerateOfficialDemand}
+                disabled={generating || !previewResult}
+                className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {generating ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Committing Demand to Ledger...</span>
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>Generate & Commit Official Demand</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {calcError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-3 rounded-xl flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                <span>{calcError}</span>
               </div>
+            )}
+
+            {generationSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-xl flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" />
+                <span>{generationSuccess}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Live Calculation Breakdown (7 Cols) */}
+        <div className="lg:col-span-7 space-y-5">
+          {previewResult ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
+              {/* Result Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+                      {previewResult.student_roll}
+                    </span>
+                    <span className="font-bold text-slate-900 text-sm">{previewResult.student_name}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {previewResult.program_code} • AY {previewResult.academic_year} • Reg {previewResult.regulation}
+                  </div>
+                </div>
+
+                <div className="text-right font-mono">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold font-sans">
+                    Net Payable Demand
+                  </div>
+                  <div className="text-2xl font-black text-brand-700">
+                    ₹{previewResult.net_demand.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Aggregate Metric Cards */}
+              <div className="grid grid-cols-4 gap-2 text-center font-mono">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <div className="text-[10px] text-slate-500 uppercase font-sans font-semibold">Gross</div>
+                  <div className="text-sm font-bold text-slate-800">₹{previewResult.gross_demand.toLocaleString()}</div>
+                </div>
+                <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200">
+                  <div className="text-[10px] text-emerald-800 uppercase font-sans font-semibold">Scholarship</div>
+                  <div className="text-sm font-bold text-emerald-700">-₹{previewResult.total_scholarship.toLocaleString()}</div>
+                </div>
+                <div className="bg-blue-50/70 p-2.5 rounded-xl border border-blue-200">
+                  <div className="text-[10px] text-blue-800 uppercase font-sans font-semibold">Concession</div>
+                  <div className="text-sm font-bold text-blue-700">-₹{previewResult.total_concession.toLocaleString()}</div>
+                </div>
+                <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-200">
+                  <div className="text-[10px] text-purple-800 uppercase font-sans font-semibold">Waivers</div>
+                  <div className="text-sm font-bold text-purple-700">-₹{previewResult.total_waiver.toLocaleString()}</div>
+                </div>
+              </div>
+
+              {/* Head-by-Head Priority Waterfall Table */}
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>8-Head Priority Deductions Breakdown</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Deterministic Rule Application</span>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] font-semibold uppercase">
+                      <tr>
+                        <th className="py-2.5 px-3">Head</th>
+                        <th className="py-2.5 px-3 text-right">Gross (₹)</th>
+                        <th className="py-2.5 px-3 text-right">Deductions</th>
+                        <th className="py-2.5 px-3 text-right">Net Payable</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                      {previewResult.items.map((it) => {
+                        const totalDeduction =
+                          it.scholarship_deduction + it.concession_deduction + it.waiver_deduction;
+                        return (
+                          <tr key={it.head_id} className="hover:bg-slate-50/50">
+                            <td className="py-2 px-3 font-sans">
+                              <div className="font-semibold text-slate-800">{it.head_name}</div>
+                              <span className="text-[10px] text-slate-400 font-mono">P{it.priority} • {it.head_code}</span>
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-600">₹{it.gross_amount.toLocaleString()}</td>
+                            <td className="py-2 px-3 text-right text-emerald-700 font-bold">
+                              {totalDeduction > 0 ? `-₹${totalDeduction.toLocaleString()}` : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-slate-900">
+                              ₹{it.net_amount.toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-slate-50 font-bold border-t border-slate-200 text-slate-900 font-mono">
+                      <tr>
+                        <td className="py-2.5 px-3 font-sans">Total Net Demand:</td>
+                        <td className="py-2.5 px-3 text-right">₹{previewResult.gross_demand.toLocaleString()}</td>
+                        <td className="py-2.5 px-3 text-right text-emerald-700">
+                          -₹{(previewResult.total_scholarship + previewResult.total_concession + previewResult.total_waiver).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-brand-700 text-sm">
+                          ₹{previewResult.net_demand.toLocaleString()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              {/* Installment Tranches Partition Preview */}
+              <div className="space-y-2 border-t border-slate-100 pt-4">
+                <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Simulated {installmentCount}-Tranche Installment Schedule</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Exact penny partition</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  {Array.from({ length: installmentCount }).map((_, idx) => {
+                    const baseAmount = Math.floor(previewResult.net_demand / installmentCount);
+                    const remainder = previewResult.net_demand - baseAmount * installmentCount;
+                    const trancheAmount = idx === 0 ? baseAmount + remainder : baseAmount;
+                    const dueDates = ['2026-08-15', '2026-11-15', '2027-02-15'];
+
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1"
+                      >
+                        <div className="flex items-center justify-between font-bold text-slate-700">
+                          <span>Tranche #{idx + 1}</span>
+                          <span className="text-[10px] font-mono text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                            {idx === 0 ? 'Due at Registration' : 'Term Installment'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">Due: {dueDates[idx]}</div>
+                        <div className="font-mono font-bold text-base text-slate-900">
+                          ₹{trancheAmount.toLocaleString()}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400">
+              Select student parameters and click "Calculate Fee Assessment" to generate live simulation.
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 };

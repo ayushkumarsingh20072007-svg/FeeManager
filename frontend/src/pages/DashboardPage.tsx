@@ -1,10 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { UserProfile, LedgerStats, AuditLogItem } from '../types';
+import {
+  UserProfile,
+  LedgerStats,
+  AuditLogItem,
+  RiskDashboardSummary,
+  CollectionTrendResponse,
+  AgingDistributionResponse,
+  ProgramDefaulterHeatmapResponse,
+} from '../types';
 import { ApiClient } from '../services/api';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
 import { StatusBadge } from '../components/StatusBadge';
 import { LoadingState } from '../components/LoadingState';
+import { StudentRiskModal } from '../components/StudentRiskModal';
+import { CollectionTrendChart } from '../components/charts/CollectionTrendChart';
+import { AgingDistributionChart } from '../components/charts/AgingDistributionChart';
+import { ProgramDefaulterHeatmap } from '../components/charts/ProgramDefaulterHeatmap';
 import {
   Users,
   Coins,
@@ -18,6 +30,14 @@ import {
   TrendingUp,
   FileSpreadsheet,
   Layers,
+  ShieldAlert,
+  Bell,
+  Eye,
+  Sparkles,
+  BarChart2,
+  RefreshCw,
+  PieChart as PieChartIcon,
+  Grid,
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -28,8 +48,40 @@ interface DashboardPageProps {
 export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onNavigate }) => {
   const [stats, setStats] = useState<LedgerStats | null>(null);
   const [recentLogs, setRecentLogs] = useState<AuditLogItem[]>([]);
+  const [riskSummary, setRiskSummary] = useState<RiskDashboardSummary | null>(null);
+
+  // Recharts Analytics State
+  const [trendData, setTrendData] = useState<CollectionTrendResponse | null>(null);
+  const [agingChartData, setAgingChartData] = useState<AgingDistributionResponse | null>(null);
+  const [heatmapData, setHeatmapData] = useState<ProgramDefaulterHeatmapResponse | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(true);
+  const [lastRefreshed, setLastRefreshed] = useState<string>('');
+
+  const [selectedRiskStudent, setSelectedRiskStudent] = useState<string | null>(null);
+  const [notifiedRolls, setNotifiedRolls] = useState<Record<string, boolean>>({});
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchAnalyticsData = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const [trendRes, agingRes, heatmapRes] = await Promise.all([
+        ApiClient.get<CollectionTrendResponse>('/analytics/collection-trend?months=6').catch(() => null),
+        ApiClient.get<AgingDistributionResponse>('/analytics/aging-distribution').catch(() => null),
+        ApiClient.get<ProgramDefaulterHeatmapResponse>('/analytics/program-defaulter-heatmap').catch(() => null),
+      ]);
+
+      setTrendData(trendRes);
+      setAgingChartData(agingRes);
+      setHeatmapData(heatmapRes);
+      setLastRefreshed(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    } catch (aErr) {
+      console.warn('Analytics fetch error:', aErr);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -43,8 +95,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onNavigate }
           const logsData = await ApiClient.get<AuditLogItem[]>('/audit-logs?limit=5');
           setRecentLogs(logsData);
         } catch {
-          // If non-admin, logs may not be accessible, which is expected under RBAC
+          // If non-admin, logs may not be accessible under RBAC
         }
+
+        try {
+          const riskData = await ApiClient.get<RiskDashboardSummary>('/risk/dashboard-summary');
+          setRiskSummary(riskData);
+        } catch (rErr) {
+          console.warn('Risk dashboard API note:', rErr);
+        }
+
+        // Fetch parallel analytics chart data
+        await fetchAnalyticsData();
       } catch (err: any) {
         console.error('Error fetching dashboard stats:', err);
         setError(err.message || 'Unable to connect to financial ledger API.');
@@ -55,6 +117,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onNavigate }
 
     fetchDashboardData();
   }, [user]);
+
+  const handleNotifyStudent = (rollNo: string) => {
+    setNotifiedRolls((prev) => ({ ...prev, [rollNo]: true }));
+    setToastMessage(`SMS/Email payment reminder logged for student ${rollNo}`);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
 
   if (loading) {
     return <LoadingState message="Loading Institutional Financial Dashboard..." />;
@@ -130,7 +199,113 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onNavigate }
         />
       </div>
 
+      {/* 2.5 Analytics & Visual Intelligence (Recharts Charts) */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="flex items-center space-x-2.5">
+            <BarChart2 className="w-5 h-5 text-brand-600" />
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Analytics & Visual Intelligence</h2>
+              <p className="text-xs text-slate-500">Real SQL-aggregated financial collection trends, aging distribution, and cohort heatmap</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            {lastRefreshed && (
+              <span className="text-[11px] font-mono text-slate-500">
+                Last updated: <strong className="text-slate-700">{lastRefreshed}</strong>
+              </span>
+            )}
+            <button
+              onClick={fetchAnalyticsData}
+              disabled={analyticsLoading}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-brand-600 ${analyticsLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh Charts</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Chart Card 1: Collection Trend Full Width */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center space-x-2.5">
+              <TrendingUp className="w-5 h-5 text-emerald-600" />
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Monthly Collection & Realization Trend (Last 6 Months)</h3>
+                <p className="text-xs text-slate-500">Reconciled bank collections vs baseline institutional target in ₹ Lakhs</p>
+              </div>
+            </div>
+            {trendData && (
+              <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+                Avg Monthly: ₹{(trendData.average_monthly / 100000).toFixed(2)}L
+              </span>
+            )}
+          </div>
+
+          <CollectionTrendChart
+            data={trendData?.data || []}
+            loading={analyticsLoading}
+          />
+        </div>
+
+        {/* Chart Cards 2 & 3: Aging Donut + Defaulter Heatmap Side-by-Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Card 2: Aging Distribution Donut */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <PieChartIcon className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Receivables Aging Distribution</h3>
+                  <p className="text-xs text-slate-500">Interactive donut chart grouped by severity. Click slice to drill down.</p>
+                </div>
+              </div>
+            </div>
+
+            <AgingDistributionChart
+              data={agingChartData?.data || []}
+              totalOutstanding={agingChartData?.total_outstanding || 0}
+              totalDefaulters={agingChartData?.total_defaulters || 0}
+              loading={analyticsLoading}
+              onSliceClick={(_bucketCode) => {
+                if (onNavigate) {
+                  onNavigate('students');
+                }
+              }}
+            />
+          </div>
+
+          {/* Card 3: Program Defaulter Heatmap */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <Grid className="w-5 h-5 text-amber-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Program × Aging Defaulter Heatmap</h3>
+                  <p className="text-xs text-slate-500">Color intensity scaled to student count. Click cell to filter cohort.</p>
+                </div>
+              </div>
+            </div>
+
+            <ProgramDefaulterHeatmap
+              programs={heatmapData?.programs || []}
+              buckets={heatmapData?.buckets || []}
+              matrix={heatmapData?.matrix || []}
+              details={heatmapData?.details || {}}
+              loading={analyticsLoading}
+              onCellClick={(_prog, _bucket) => {
+                if (onNavigate) {
+                  onNavigate('students');
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* 3. Operational Financial & Payment Overview */}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Financial Overview Progress & Aging Breakdown */}
         <div className="lg:col-span-2 space-y-6">
@@ -236,6 +411,106 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onNavigate }
               </div>
             </div>
           </div>
+
+          {/* Section C: Default-Risk Prediction & Forecasting (Task 4) */}
+          {riskSummary && (
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center space-x-2.5">
+                  <ShieldAlert className="w-5 h-5 text-red-600" />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Students at Risk (Rule-Based Forecast)</h3>
+                    <p className="text-xs text-slate-500">Transparent 0-100 risk scoring engine for next 30-day default probability</p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-900 text-white border border-slate-700 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  Explainable Rule Engine
+                </span>
+              </div>
+
+              {/* Risk Distribution Cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
+                  <div className="text-[10px] font-semibold text-emerald-800">LOW Risk (0-30)</div>
+                  <div className="text-lg font-black text-emerald-700 font-mono mt-0.5">{riskSummary.distribution.LOW}</div>
+                  <div className="text-[10px] text-slate-500">
+                    {Math.round((riskSummary.distribution.LOW / riskSummary.total_students) * 100)}% of cohort
+                  </div>
+                </div>
+                <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-100">
+                  <div className="text-[10px] font-semibold text-amber-800">MEDIUM Risk (31-60)</div>
+                  <div className="text-lg font-black text-amber-700 font-mono mt-0.5">{riskSummary.distribution.MEDIUM}</div>
+                  <div className="text-[10px] text-slate-500">
+                    {Math.round((riskSummary.distribution.MEDIUM / riskSummary.total_students) * 100)}% of cohort
+                  </div>
+                </div>
+                <div className="p-3 bg-red-50/60 rounded-xl border border-red-100">
+                  <div className="text-[10px] font-semibold text-red-800">HIGH Risk (61-100)</div>
+                  <div className="text-lg font-black text-red-700 font-mono mt-0.5">{riskSummary.distribution.HIGH}</div>
+                  <div className="text-[10px] text-red-600 font-medium">
+                    {Math.round((riskSummary.distribution.HIGH / riskSummary.total_students) * 100)}% requires follow-up
+                  </div>
+                </div>
+              </div>
+
+              {/* Top 5 High-Risk Students List */}
+              <div className="space-y-2 pt-2">
+                <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                  <span>Top 5 High-Risk Students (Priority Follow-up Queue)</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Ranked by score descending</span>
+                </div>
+
+                <div className="space-y-2">
+                  {riskSummary.top_high_risk.map((item) => (
+                    <div
+                      key={item.student_id}
+                      className="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 transition-colors text-xs"
+                    >
+                      <div className="space-y-0.5 max-w-md">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900">{item.student_name}</span>
+                          <span className="font-mono text-slate-500 text-[10px]">({item.roll_no})</span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-200 text-slate-700">
+                            {item.program_code}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 truncate">{item.primary_reason}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200 font-mono">
+                          {item.risk_score} / 100
+                        </span>
+
+                        <button
+                          onClick={() => setSelectedRiskStudent(item.roll_no)}
+                          className="p-1.5 px-2.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                          title="View Risk Breakdown"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-brand-600" />
+                          <span>Breakdown</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleNotifyStudent(item.roll_no)}
+                          disabled={notifiedRolls[item.roll_no]}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                            notifiedRolls[item.roll_no]
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-amber-600 hover:bg-amber-700 text-white shadow-2xs'
+                          }`}
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          {notifiedRolls[item.roll_no] ? 'Notified' : 'Notify'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right 1 Col: Operational Action Queues */}
@@ -398,6 +673,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onNavigate }
           </div>
         )}
       </div>
+
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-2.5 text-xs animate-in slide-in-from-bottom-5">
+          <Bell className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Student Risk Breakdown Modal */}
+      {selectedRiskStudent && (
+        <StudentRiskModal
+          studentIdOrRoll={selectedRiskStudent}
+          onClose={() => setSelectedRiskStudent(null)}
+          onNotify={handleNotifyStudent}
+        />
+      )}
     </div>
   );
 };

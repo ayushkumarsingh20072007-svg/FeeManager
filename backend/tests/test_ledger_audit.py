@@ -229,7 +229,7 @@ def test_dashboard_aggregate_consistency(client, auth_headers):
     assert resp_stats.status_code == 200
     stats = resp_stats.json()
 
-    resp_students = client.get("/api/v1/ledger/students?limit=100", headers=auth_headers)
+    resp_students = client.get("/api/v1/ledger/students?limit=300", headers=auth_headers)
     assert resp_students.status_code == 200
     students = resp_students.json()
 

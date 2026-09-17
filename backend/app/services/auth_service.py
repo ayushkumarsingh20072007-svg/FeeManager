@@ -14,12 +14,21 @@ class AuthService:
         self.user_repo = UserRepository(db)
         self.audit_service = AuditService(db)
 
-    def authenticate_user(self, email: str, password: str) -> Optional[User]:
-        user = self.user_repo.get_by_email(email)
+    def authenticate_user(self, identifier: str, password: str) -> Optional[User]:
+        user = self.user_repo.get_by_identifier(identifier)
         if not user:
             return None
-        if not verify_password(password, user.password_hash):
-            return None
+
+        # User Requirement: Student password MUST be that particular student's Student ID (roll_no).
+        # Under no circumstance should any other password open a student account.
+        if user.role == UserRole.STUDENT and user.student_profile:
+            student_id = (user.student_profile.roll_no or "").strip().upper()
+            if not student_id or password.strip().upper() != student_id:
+                return None
+        else:
+            if not verify_password(password, user.password_hash):
+                return None
+
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

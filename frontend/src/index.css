@@ -54,3 +54,61 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   PRINT ISOLATION: Single-Copy Fee Challan
+   Ensures EXACTLY 1 page is generated in the PDF/print dialog.
+   Hides the entire interactive React tree (#root) during printing.
+────────────────────────────────────────────────────────────────────────────── */
+#single-fee-challan-print-root,
+#single-hall-ticket-print-root {
+  display: none;
+}
+
+@media print {
+  /* 1. Reset root page & canvas */
+  @page {
+    size: A4 portrait;
+    margin: 6mm 8mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11px !important;
+  }
+
+  /* 2. Completely hide the React app root tree (headers, sidebars, tables, backdrop modals) */
+  #root {
+    display: none !important;
+  }
+
+  /* 3. Display ONLY the single fee challan or hall ticket print root */
+  #single-fee-challan-print-root,
+  #single-hall-ticket-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 2mm 4mm !important;
+    box-sizing: border-box !important;
+    background: #ffffff !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-inside: avoid !important;
+    break-after: avoid !important;
+  }
+
+  /* 4. Force high-contrast background and border colors in print preview */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

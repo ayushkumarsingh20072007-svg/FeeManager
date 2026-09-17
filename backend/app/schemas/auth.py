@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr, ConfigDict
 from app.models.enums import UserRole
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str  # Accepts either email address or Student ID (Roll No, e.g. STU1001)
     password: str
 
 class TokenResponse(BaseModel):

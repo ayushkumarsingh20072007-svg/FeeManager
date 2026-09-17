@@ -29,8 +29,10 @@ def db_session():
     finally:
         db.close()
 
-def get_auth_token(client: TestClient, email: str = "accounts@university.edu") -> str:
-    res = client.post("/api/v1/auth/login", json={"email": email, "password": "password123"})
+def get_auth_token(client: TestClient, email: str = "accounts@university.edu", password: str = None) -> str:
+    if password is None:
+        password = "STU1001" if "student.edu" in email else "password123"
+    res = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert res.status_code == 200
     return res.json()["access_token"]
 

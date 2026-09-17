@@ -15,9 +15,10 @@ from seed import run_seed
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database():
-    """Initializes the database and runs seed data before running tests."""
+    """Initializes the database and runs seed data before running tests, and restores clean state on teardown."""
     run_seed()
     yield
+    run_seed()
 
 @pytest.fixture(scope="module")
 def client():

@@ -30,7 +30,12 @@ from app.models.audit import AuditLog
 from app.services.receipt_generator import ReceiptGenerator
 
 def get_auth_token(client: TestClient, email: str) -> str:
-    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": "password123"})
+    student_pw_map = {
+        "aravind.k@student.edu": "STU1001",
+        "priya.s@student.edu": "STU1002",
+    }
+    password = student_pw_map.get(email, "password123")
+    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert login_resp.status_code == 200
     return login_resp.json()["access_token"]
 
@@ -91,10 +96,10 @@ def test_receipt_financial_breakdown_accuracy():
         student = db.query(Student).filter(Student.roll_no == "STU1001").first()
         payment = db.query(Payment).filter(Payment.student_id == student.id).first()
         rcp = ReceiptGenerator.get_or_create_receipt(db, payment_id=payment.id)
-        assert rcp["current_payment_amount"] == 148000.0
-        assert rcp["cumulative_paid"] == 148000.0
+        assert rcp["current_payment_amount"] == 178000.0
+        assert rcp["cumulative_paid"] == 178000.0
         assert rcp["net_demand"] == 178000.0
-        assert rcp["remaining_outstanding"] == 30000.0
+        assert rcp["remaining_outstanding"] == 0.0
     finally:
         db.close()
 
@@ -102,10 +107,11 @@ def test_receipt_financial_breakdown_accuracy():
 def test_partial_payment_receipt():
     db = SessionLocal()
     try:
-        student = db.query(Student).filter(Student.roll_no == "STU1001").first()
+        student = db.query(Student).filter(Student.roll_no == "STU1002").first() # Priya Sharma (Partial payment: 15,000 paid, 118,000 due)
         payment = db.query(Payment).filter(Payment.student_id == student.id).first()
         rcp = ReceiptGenerator.get_or_create_receipt(db, payment_id=payment.id)
-        assert rcp["remaining_outstanding"] > 0.0
+        assert rcp["remaining_outstanding"] == 118000.0
+        assert rcp["current_payment_amount"] == 15000.0
         assert rcp["current_payment_amount"] < rcp["net_demand"]
     finally:
         db.close()
@@ -114,12 +120,12 @@ def test_partial_payment_receipt():
 def test_fully_paid_receipt():
     db = SessionLocal()
     try:
-        student = db.query(Student).filter(Student.roll_no == "STU1002").first() # Priya Sharma (Fully Paid)
+        student = db.query(Student).filter(Student.roll_no == "STU1001").first() # Aravind Kumar (Fully Paid)
         payment = db.query(Payment).filter(Payment.student_id == student.id).first()
         rcp = ReceiptGenerator.get_or_create_receipt(db, payment_id=payment.id)
         assert rcp["remaining_outstanding"] == 0.0
-        assert rcp["cumulative_paid"] == 133000.0
-        assert rcp["net_demand"] == 133000.0
+        assert rcp["cumulative_paid"] == 178000.0
+        assert rcp["net_demand"] == 178000.0
     finally:
         db.close()
 

@@ -93,6 +93,7 @@ class ApprovalType(str, enum.Enum):
     FEE_WAIVER = "FEE_WAIVER"
     PAYMENT_REASSIGNMENT = "PAYMENT_REASSIGNMENT"
     MANUAL_CORRECTION = "MANUAL_CORRECTION"
+    EXAM_PERMISSION = "EXAM_PERMISSION"
 
 class AuditAction(str, enum.Enum):
     READ = "READ"

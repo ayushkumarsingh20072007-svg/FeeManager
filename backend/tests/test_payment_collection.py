@@ -44,7 +44,7 @@ def test_invalid_payment_amount_zero_or_negative(client: TestClient, auth_header
 
 def test_unauthorized_student_cannot_record_payment(client: TestClient):
     """A student must NOT be able to record arbitrary official financial payment records."""
-    login_resp = client.post("/api/v1/auth/login", json={"email": "aravind.k@student.edu", "password": "password123"})
+    login_resp = client.post("/api/v1/auth/login", json={"email": "aravind.k@student.edu", "password": "STU1001"})
     assert login_resp.status_code == 200, login_resp.text
     stu_token = login_resp.json()["access_token"]
     stu_headers = {"Authorization": f"Bearer {stu_token}"}
@@ -112,7 +112,7 @@ def test_payment_reversal_by_finance_approver(client: TestClient, auth_headers: 
     payment_id = pay_resp.json()["id"]
 
     # Student cannot reverse
-    login_stu = client.post("/api/v1/auth/login", json={"email": "arun.p@student.edu", "password": "password123"})
+    login_stu = client.post("/api/v1/auth/login", json={"email": "arun.p@student.edu", "password": "STU1013"})
     stu_headers = {"Authorization": f"Bearer {login_stu.json()['access_token']}"}
     resp_stu_rev = client.post(f"/api/v1/payments/{payment_id}/reverse", json={"reason": "Self refund"}, headers=stu_headers)
     assert resp_stu_rev.status_code == 403
@@ -133,7 +133,7 @@ def test_payment_reversal_by_finance_approver(client: TestClient, auth_headers: 
 def test_student_and_parent_payment_data_isolation(client: TestClient):
     """Student and Parent endpoints enforce data isolation for payment history."""
     # Student STU1001
-    login_stu1 = client.post("/api/v1/auth/login", json={"email": "aravind.k@student.edu", "password": "password123"})
+    login_stu1 = client.post("/api/v1/auth/login", json={"email": "aravind.k@student.edu", "password": "STU1001"})
     stu1_headers = {"Authorization": f"Bearer {login_stu1.json()['access_token']}"}
 
     # Student can view own payments

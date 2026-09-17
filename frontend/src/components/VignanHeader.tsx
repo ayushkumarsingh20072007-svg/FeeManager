@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
 import { RoleBadge } from './StatusBadge';
-import { LogOut, Menu, Bell, Calendar, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { LogOut, Menu, Bell, Calendar, ChevronDown, CheckCircle2, RotateCcw } from 'lucide-react';
 
 interface VignanHeaderProps {
   user: UserProfile | null;
@@ -10,6 +10,7 @@ interface VignanHeaderProps {
   onToggleSidebar?: () => void;
   selectedYear?: string;
   onSelectYear?: (year: string) => void;
+  onResetDemo?: () => void;
 }
 
 export const VignanHeader: React.FC<VignanHeaderProps> = ({
@@ -19,6 +20,7 @@ export const VignanHeader: React.FC<VignanHeaderProps> = ({
   onToggleSidebar,
   selectedYear = '2026-27',
   onSelectYear,
+  onResetDemo,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -141,17 +143,28 @@ export const VignanHeader: React.FC<VignanHeaderProps> = ({
                   onChange={(e) => onSwitchUser(e.target.value)}
                   className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-700 hover:border-brand-500 focus:outline-none cursor-pointer font-medium appearance-none pr-6"
                 >
-                  <option value="accounts@university.edu">Accounts Officer (Rajesh)</option>
-                  <option value="finance.approver@university.edu">Finance Approver (Dr. Ramanathan)</option>
-                  <option value="director@university.edu">Management (Director Finance)</option>
-                  <option value="admin@university.edu">Admin (Finance Admin)</option>
-                  <option value="sysadmin@university.edu">System Admin</option>
-                  <option value="aravind.k@student.edu">Student (Aravind - STU1001)</option>
-                  <option value="priya.s@student.edu">Student (Priya - Merit Schol.)</option>
-                  <option value="parent.aravind@gmail.com">Parent (S. Kumar)</option>
+                  <option value="accounts@university.edu">Accounts Officer (Finance Operations)</option>
+                  <option value="finance.approver@university.edu">Finance Approver (Approvals & Refunds)</option>
+                  <option value="director@university.edu">Management (Executive Dashboard)</option>
+                  <option value="admin@university.edu">System Admin (Master Config)</option>
+                  <option value="aravind.k@student.edu">Student: Aravind Kumar (Cleared / Approved)</option>
+                  <option value="priya.s@student.edu">Student: Priya Sharma (Fees Due: ₹1,18,000)</option>
+                  <option value="meera.i@student.edu">Student: Meera Iyer (Attendance: 68% Shortage)</option>
                 </select>
                 <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 pointer-events-none" />
               </div>
+            )}
+
+            {/* Evaluator Live Demo Reset Button */}
+            {onResetDemo && (
+              <button
+                onClick={onResetDemo}
+                title="Reset Demo: Re-locks Priya & Meera to fresh state for repeat evaluator presentations"
+                className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3 text-amber-700" />
+                <span className="hidden sm:inline">Reset Demo</span>
+              </button>
             )}
 
             <button

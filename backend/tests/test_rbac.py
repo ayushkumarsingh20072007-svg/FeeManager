@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
 
 def get_auth_header(client: TestClient, email: str) -> dict:
-    resp = client.post("/api/v1/auth/login", json={"email": email, "password": "password123"})
+    password = "STU1001" if "student.edu" in email else "password123"
+    resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 

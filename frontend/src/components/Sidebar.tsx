@@ -17,10 +17,14 @@ import {
   Database,
   ScrollText,
   Settings as SettingsIcon,
+  Cpu,
+  GraduationCap,
   X,
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Printer,
+  Award,
 } from 'lucide-react';
 import { UserRole, UserProfile } from '../types';
 import { RoleBadge } from './StatusBadge';
@@ -37,6 +41,20 @@ export interface NavGroupDef {
   items: NavItemDef[];
 }
 
+export const studentNavGroups: NavGroupDef[] = [
+  {
+    title: 'STUDENT PORTAL',
+    items: [
+      { id: 'student-dashboard', label: 'My Fee Dashboard', icon: LayoutDashboard },
+      { id: 'student-ledger', label: 'My Fee Ledger', icon: FileSpreadsheet },
+      { id: 'student-challan', label: 'Official Fee Challan', icon: Printer },
+      { id: 'student-hall-ticket', label: 'Exam Hall Ticket & Clearances', icon: Award },
+      { id: 'student-payments', label: 'Payments & Receipts', icon: CreditCard },
+      { id: 'ai-assistant', label: 'AI Fee Assistant', icon: Bot },
+    ],
+  },
+];
+
 export const navGroups: NavGroupDef[] = [
   {
     title: 'MAIN',
@@ -49,8 +67,14 @@ export const navGroups: NavGroupDef[] = [
     title: 'STUDENT & FEES',
     items: [
       {
+        id: 'programs',
+        label: 'Academic Programs (11)',
+        icon: GraduationCap,
+        roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'MANAGEMENT', 'SYSTEM_ADMIN'],
+      },
+      {
         id: 'students',
-        label: 'Students',
+        label: 'Students Registry',
         icon: Users,
         roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'MANAGEMENT', 'SYSTEM_ADMIN'],
       },
@@ -58,19 +82,25 @@ export const navGroups: NavGroupDef[] = [
         id: 'fee-management',
         label: 'Fee Management',
         icon: Coins,
-        roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'MANAGEMENT', 'SYSTEM_ADMIN', 'STUDENT', 'PARENT'],
+        roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'MANAGEMENT', 'SYSTEM_ADMIN'],
       },
       {
         id: 'fee-demands',
         label: 'Fee Demands',
         icon: FileSpreadsheet,
-        roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'MANAGEMENT', 'SYSTEM_ADMIN', 'STUDENT', 'PARENT'],
+        roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'MANAGEMENT', 'SYSTEM_ADMIN'],
       },
       {
         id: 'fee-structures',
         label: 'Fee Structures',
         icon: Layers,
         roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'MANAGEMENT', 'SYSTEM_ADMIN'],
+      },
+      {
+        id: 'counsellor-desk',
+        label: 'Counsellor / Exam Clearance',
+        icon: Award,
+        roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'FINANCE_APPROVER', 'MANAGEMENT', 'SYSTEM_ADMIN'],
       },
     ],
   },
@@ -130,6 +160,12 @@ export const navGroups: NavGroupDef[] = [
         label: 'Database Ledger',
         icon: Database,
         roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'FINANCE_APPROVER', 'MANAGEMENT', 'SYSTEM_ADMIN'],
+      },
+      {
+        id: 'integrations',
+        label: 'Integrations & Webhooks',
+        icon: Cpu,
+        roles: ['ACCOUNTS_OFFICER', 'ADMIN', 'FINANCE_APPROVER', 'MANAGEMENT', 'SYSTEM_ADMIN', 'STUDENT'],
       },
       {
         id: 'audit-logs',
@@ -223,7 +259,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* 2. Navigation Groups */}
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
-        {navGroups.map((group, gIdx) => {
+        {(user?.role === 'STUDENT' ? studentNavGroups : navGroups).map((group, gIdx) => {
           const visibleItems = group.items.filter(isItemVisible);
           if (visibleItems.length === 0) return null;
 

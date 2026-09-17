@@ -21,8 +21,8 @@ def test_seeded_models_exist_and_relate():
         demand = db.query(FeeDemand).filter(FeeDemand.student_id == student.id).first()
         assert demand is not None
         assert demand.gross_demand == 178000.0
-        assert demand.paid_amount == 148000.0
-        assert demand.outstanding_amount == 30000.0
+        assert demand.paid_amount == 178000.0
+        assert demand.outstanding_amount == 0.0
         assert len(demand.items) > 0
 
         # Check versioned fee structure

@@ -14,22 +14,25 @@ def test_reconciliation_list_bank_transactions(client: TestClient, auth_headers:
     # Find seeded TXN-BNK-202609-001
     t1 = next((t for t in txns if t["bank_transaction_id"] == "TXN-BNK-202609-001"), None)
     assert t1 is not None
-    assert t1["amount"] == 148000.0
+    assert t1["amount"] == 178000.0
     assert t1["reconciliation_status"] == "MATCHED"
+
+import uuid
 
 def test_reconciliation_ingest_bank_transaction(client: TestClient, auth_headers: dict):
     """Finance staff can ingest a new bank statement transaction."""
+    test_txn_id = f"TXN-BNK-TEST-{uuid.uuid4().hex[:8]}"
     payload = {
-        "bank_transaction_id": "TXN-BNK-TEST-INGEST-01",
+        "bank_transaction_id": test_txn_id,
         "transaction_date": datetime.now(timezone.utc).isoformat(),
         "amount": 45000.0,
-        "reference_number": "UTR_TEST_INGEST_991",
+        "reference_number": f"UTR_TEST_{uuid.uuid4().hex[:6]}",
         "description": "Direct counter deposit",
     }
     resp = client.post("/api/v1/reconciliation/bank-transactions", json=payload, headers=auth_headers)
     assert resp.status_code == 201
     data = resp.json()
-    assert data["bank_transaction_id"] == "TXN-BNK-TEST-INGEST-01"
+    assert data["bank_transaction_id"] == test_txn_id
     assert data["reconciliation_status"] == "UNMATCHED"
 
 def test_preservation_of_intentional_mismatches(client: TestClient, auth_headers: dict):
@@ -72,7 +75,7 @@ def test_manual_mismatch_resolution(client: TestClient, auth_headers: dict):
 
 def test_student_and_parent_blocked_from_reconciliation(client: TestClient):
     """Students and parents MUST NOT have access to institution bank reconciliation data."""
-    login_stu = client.post("/api/v1/auth/login", json={"email": "aravind.k@student.edu", "password": "password123"})
+    login_stu = client.post("/api/v1/auth/login", json={"email": "aravind.k@student.edu", "password": "STU1001"})
     assert login_stu.status_code == 200, login_stu.text
     stu_headers = {"Authorization": f"Bearer {login_stu.json()['access_token']}"}
 

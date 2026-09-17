@@ -52,3 +52,14 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
+
+# Docker
+.dockerignore
+
+# Production secrets — NEVER commit these
+.env.production
+.env.local
+.env.*.local
+
+# Docker build cache artifacts
+*.tar

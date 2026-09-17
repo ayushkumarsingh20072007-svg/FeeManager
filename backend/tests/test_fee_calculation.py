@@ -33,7 +33,8 @@ from app.services.fee_calculator import FeeCalculator, to_decimal
 from app.services.demand_generator import DemandGenerator
 
 def get_auth_token(client: TestClient, email: str) -> str:
-    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": "password123"})
+    password = "STU1001" if "student.edu" in email else "password123"
+    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert login_resp.status_code == 200
     return login_resp.json()["access_token"]
 

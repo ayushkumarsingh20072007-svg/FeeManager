@@ -1,24 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UserProfile } from '../types';
-import { Send, Mic, Sparkles, CheckCircle2, Database } from 'lucide-react';
+import { UserProfile, AIChatResponse } from '../types';
+import { ApiClient } from '../services/api';
+import {
+  Send,
+  Sparkles,
+  ShieldCheck,
+  AlertCircle,
+  TrendingUp,
+  Building2,
+  HelpCircle,
+  FileSpreadsheet,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  Filter
+} from 'lucide-react';
 
 export interface ChatMessage {
   id: string;
   sender: 'ASSISTANT' | 'USER';
   text: string;
   timestamp: string;
-  financialData?: {
-    title?: string;
-    grossDemand?: number;
-    scholarship?: number;
-    concession?: number;
-    netDemand?: number;
-    paidAmount?: number;
-    outstandingAmount?: number;
-    breakdown?: { head: string; amount: number; paid: number; outstanding: number }[];
-    status?: string;
-    source?: string;
-  };
+  intent?: string;
+  toolsUsed?: string[];
+  reasoningTrace?: string[];
+  financialData?: Record<string, any>;
+  status?: string;
 }
 
 interface ChatInterfaceProps {
@@ -26,18 +33,74 @@ interface ChatInterfaceProps {
   onOpenLedgerTab?: () => void;
 }
 
+const ROLE_PROMPTS: Record<string, string[]> = {
+  STUDENT: [
+    'What is my outstanding fee?',
+    'Show my fee breakup',
+    'How much have I paid?',
+    'Show my receipt details',
+    'What is my current demand?'
+  ],
+  PARENT: [
+    "What is my ward's outstanding fee?",
+    'Show fee breakup for my ward',
+    'How much has been paid so far?',
+    'Show receipt details'
+  ],
+  ACCOUNTS_OFFICER: [
+    'Which OBC students in CSE are overdue and have exam clearance blocked?',
+    'Show overdue students',
+    'Show payment reconciliation exceptions',
+    'Show unmatched bank transactions',
+    'Show fee collection by program',
+    'Give me a financial summary'
+  ],
+  FINANCE_APPROVER: [
+    'Which OBC students in CSE are overdue and have exam clearance blocked?',
+    'Show overdue students',
+    'Explain this reconciliation mismatch',
+    'Show unmatched bank transactions',
+    'Give me a financial summary'
+  ],
+  MANAGEMENT: [
+    'Which OBC students in CSE are overdue and have exam clearance blocked?',
+    'Give me a financial summary',
+    'Show fee collection by program',
+    'Show overdue students',
+    'Show reconciliation status'
+  ],
+  ADMIN: [
+    'Which OBC students in CSE are overdue and have exam clearance blocked?',
+    'Give me a financial summary',
+    'Show overdue students',
+    'Show reconciliation status',
+    'Show unmatched bank transactions'
+  ]
+};
+
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onOpenLedgerTab }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
-      id: '1',
+      id: 'init-1',
       sender: 'ASSISTANT',
-      text: `Welcome to Agent 40 — Fee Management Assistant for Vignan's University.\n\nI am connected to the institutional financial core database. You can query fee demands, payment allocations, outstanding aging balances, reconciliation mismatches, and refund proposals.\n\nHow can I assist you today, ${user.full_name}?`,
-      timestamp: '10:30 AM',
+      text: `Hello ${user.full_name}! I am your **AI Fee & Finance Intelligence Assistant** for Vignan's University.\n\nI am connected directly to the deterministic financial core database with strict role-based access control. How can I assist you with financial inquiries today?`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }
   ]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activePrompts, setActivePrompts] = useState<string[]>(
+    ROLE_PROMPTS[user.role] || ROLE_PROMPTS['STUDENT']
+  );
+  const [expandedTraceIds, setExpandedTraceIds] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const toggleTrace = (msgId: string) => {
+    setExpandedTraceIds((prev) => ({
+      ...prev,
+      [msgId]: !prev[msgId]
+    }));
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -45,442 +108,481 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onOpenLedger
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isProcessing]);
 
-  const getAssistantResponse = (query: string): ChatMessage => {
-    const q = query.toLowerCase();
+  const handleSendMessage = async (textToSend?: string) => {
+    const query = (textToSend || input).trim();
+    if (!query || isProcessing) return;
+
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    // 1. Total outstanding fee
-    if (q.includes('outstanding') || q.includes('how much') || q.includes('balance') || q.includes('due')) {
-      if (user.role === 'STUDENT' || q.includes('stu1001') || q.includes('aravind')) {
-        return {
-          id: String(Date.now()),
-          sender: 'ASSISTANT',
-          text: `Verified Student Balance (STU1001 - Aravind Kumar):\n• Gross Annual Demand: ₹1,78,000 (AY 2026-27, B.Tech CSE, Reg R23)\n• Total Reconciled Paid: ₹1,48,000\n• Net Outstanding: ₹30,000\n\nThe outstanding ₹30,000 comprises ₹15,000 hostel balance, ₹10,000 campus transport, and ₹5,000 caution deposit.`,
-          timestamp: timeStr,
-          financialData: {
-            title: 'Verified Student Fee Ledger (STU1001)',
-            grossDemand: 178000,
-            scholarship: 0,
-            concession: 0,
-            netDemand: 178000,
-            paidAmount: 148000,
-            outstandingAmount: 30000,
-            breakdown: [
-              { head: 'Tuition Fee (P1)', amount: 80000, paid: 80000, outstanding: 0 },
-              { head: 'Examination Fee (P2)', amount: 5000, paid: 5000, outstanding: 0 },
-              { head: 'Laboratory Fee (P3)', amount: 4000, paid: 4000, outstanding: 0 },
-              { head: 'Library Fee (P4)', amount: 2000, paid: 2000, outstanding: 0 },
-              { head: 'Hostel & Residence (P5)', amount: 60000, paid: 45000, outstanding: 15000 },
-              { head: 'Campus Transport (P6)', amount: 15000, paid: 5000, outstanding: 10000 },
-              { head: 'Caution Deposit (P7)', amount: 10000, paid: 5000, outstanding: 5000 },
-              { head: 'One-Time Charges (P8)', amount: 5000, paid: 5000, outstanding: 0 },
-            ],
-            status: 'PARTIALLY_PAID',
-            source: 'SQLite Core Ledger (agent40.db) • Rules Validated'
-          }
-        };
-      } else {
-        return {
-          id: String(Date.now()),
-          sender: 'ASSISTANT',
-          text: `Institutional Outstanding Overview for AY 2026-27 across 28 active student cohorts:\n• Total Gross Demand: ₹49,84,000\n• Total Reconciled Collections: ₹34,22,500 (68.7% Collection Rate)\n• Total Outstanding Receivables: ₹15,61,500\n• 90+ Days Overdue (Critical): ₹5,11,500`,
-          timestamp: timeStr,
-          financialData: {
-            title: 'Institutional Aggregate Financial Overview',
-            grossDemand: 4984000,
-            paidAmount: 3422500,
-            outstandingAmount: 1561500,
-            status: 'ACTIVE_COLLECTION_CYCLE',
-            source: 'Vignan Financial Core Database'
-          }
-        };
-      }
-    }
-
-    // 2. Payment history
-    if (q.includes('payment') || q.includes('history') || q.includes('receipt') || q.includes('transaction')) {
-      return {
-        id: String(Date.now()),
-        sender: 'ASSISTANT',
-        text: `Payment Journal Summary: 23 total transactions are recorded in the database ledger. Recent transaction PAY-2026-0001 (₹1,48,000 via Netbanking TXN_RZP_987123654) has been fully allocated to tuition, exam, lab, and library fees per priority rules.`,
-        timestamp: timeStr,
-        financialData: {
-          title: 'Payment Allocation Record (PAY-2026-0001)',
-          paidAmount: 148000,
-          status: 'RECONCILED',
-          breakdown: [
-            { head: 'Tuition Fee (P1)', amount: 80000, paid: 80000, outstanding: 0 },
-            { head: 'Examination Fee (P2)', amount: 5000, paid: 5000, outstanding: 0 },
-            { head: 'Laboratory Fee (P3)', amount: 4000, paid: 4000, outstanding: 0 },
-            { head: 'Library Fee (P4)', amount: 2000, paid: 2000, outstanding: 0 },
-            { head: 'Hostel & Residence (P5)', amount: 60000, paid: 45000, outstanding: 15000 },
-          ],
-          source: 'Payment Ledger (Allocated by Deterministic Priority Engine)'
-        }
-      };
-    }
-
-    // 3. Unreconciled payments & mismatches
-    if (q.includes('unreconciled') || q.includes('mismatch') || q.includes('variance') || q.includes('reconcil')) {
-      return {
-        id: String(Date.now()),
-        sender: 'ASSISTANT',
-        text: `Bank Reconciliation Status: 3 payment exceptions have been flagged for manual finance review in the ledger:\n\n1. MIS-2026-001: Amount Mismatch (Bank deposit ₹75,000 vs Demand ₹80,000 for STU1001)\n2. MIS-2026-002: Duplicate Gateway Transaction (TXN_DUP_88123499)\n3. MIS-2026-003: Roll number mismatch on NEFT bank transfer\n\nStatus: FINANCE_REVIEW_REQUIRED. Security Rule: The system never auto-writes off variances.`,
-        timestamp: timeStr,
-        financialData: {
-          title: 'Reconciliation Variance Log',
-          grossDemand: 80000,
-          paidAmount: 75000,
-          outstandingAmount: 5000,
-          status: 'FINANCE_REVIEW_REQUIRED',
-          source: 'Automated Ledger Variance Detector'
-        }
-      };
-    }
-
-    // 4. Pending refunds
-    if (q.includes('refund') || q.includes('withdraw') || q.includes('cancellation')) {
-      return {
-        id: String(Date.now()),
-        sender: 'ASSISTANT',
-        text: `Refund Management Queue:\n• Active Refund Proposals: 2 recorded in SQLite ledger.\n• REF-2026-0041: STU1004 (CSE) • Paid ₹1,00,000 • Proposed Refund ₹85,000 under UGC Tier-1.\n\n⚠️ Guardrail: AI cannot disburse money autonomously. Disbursement is blocked pending Dr. Ramanathan's two-man rule sign-off.`,
-        timestamp: timeStr,
-        financialData: {
-          title: 'Refund Proposal (REF-2026-0041)',
-          paidAmount: 100000,
-          outstandingAmount: 85000,
-          status: 'PENDING_APPROVAL',
-          source: 'UGC Tier-1 Refund Policy Matrix'
-        }
-      };
-    }
-
-    // 5. 90+ days overdue fees
-    if (q.includes('90+') || q.includes('overdue') || q.includes('aging') || q.includes('delinquen')) {
-      return {
-        id: String(Date.now()),
-        sender: 'ASSISTANT',
-        text: `Aging & Delinquency Analysis:\n• Total 90+ Days Overdue: ₹5,11,500 across 3 students.\n• STU1008 (Rahul Varma - B.Tech CSE): ₹1,78,000 overdue since Nov 2025\n• STU1019 (Kavya Reddy - B.Tech ECE): ₹1,60,000 overdue\n• STU1024 (Sai Teja - MBA): ₹1,73,500 overdue\n\nRecommendation: Trigger Stage-3 institutional collection reminders.`,
-        timestamp: timeStr,
-        financialData: {
-          title: '90+ Days Overdue Aging Bucket',
-          grossDemand: 511500,
-          paidAmount: 0,
-          outstandingAmount: 511500,
-          status: 'CRITICAL_OVERDUE',
-          source: 'Due Date Ledger Engine'
-        }
-      };
-    }
-
-    // 6. Today's collection
-    if (q.includes('today') || q.includes('collection') || q.includes('daily')) {
-      return {
-        id: String(Date.now()),
-        sender: 'ASSISTANT',
-        text: `Today's Realized Collection (AY 2026-27):\n• Online Gateway: ₹2,40,000 (3 transactions)\n• UPI Counter: ₹85,000 (2 transactions)\n• Bank NEFT/RTGS: ₹1,48,000 (1 transaction)\n• Total Today: ₹4,73,000 (100% Reconciled to Institutional Escrow Account).`,
-        timestamp: timeStr,
-        financialData: {
-          title: "Daily Collection Summary",
-          paidAmount: 473000,
-          status: "ESCROW_SETTLED",
-          source: "Multi-channel Payment Gateways"
-        }
-      };
-    }
-
-    // 7. Pending approvals
-    if (q.includes('approval') || q.includes('waiver') || q.includes('concession')) {
-      return {
-        id: String(Date.now()),
-        sender: 'ASSISTANT',
-        text: `Pending Financial Approvals (Two-Man Rule Queue):\n1. APP-2026-001: Merit Scholarship Concession for Priya Sharma (₹25,000) • Awaiting Finance Approver\n2. APP-2026-002: UGC Withdrawal Refund for STU1004 (₹85,000) • Awaiting Management Sign-off\n\nActions can be reviewed on the Approvals page.`,
-        timestamp: timeStr,
-        financialData: {
-          title: "Pending Authorization Queue (2 Requests)",
-          grossDemand: 110000,
-          status: "HUMAN_SIGN_OFF_REQUIRED",
-          source: "Governance & Two-Man Rule Engine"
-        }
-      };
-    }
-
-    // 8. Explain student fee demand
-    if (q.includes('explain') || q.includes('demand') || q.includes('structure')) {
-      return {
-        id: String(Date.now()),
-        sender: 'ASSISTANT',
-        text: `Fee Demand Calculation Explanation:\nFor B.Tech CSE (Regulation R23, AY 2026-27), the standard gross demand of ₹1,78,000 is structured into 8 prioritised heads:\n\n1. Tuition Fee (P1): ₹80,000\n2. Exam Fee (P2): ₹5,000\n3. Lab Fee (P3): ₹4,000\n4. Library Fee (P4): ₹2,000\n5. Hostel & Mess (P5): ₹60,000\n6. Campus Transport (P6): ₹15,000\n7. Caution Deposit (P7): ₹10,000 (Refundable)\n8. Registration (P8): ₹2,000\n\nWhen payments arrive, the deterministic allocation engine exhausts P1 first before allocating to lower heads.`,
-        timestamp: timeStr,
-        financialData: {
-          title: "B.Tech CSE Standard Structure (R23)",
-          grossDemand: 178000,
-          netDemand: 178000,
-          status: "STANDARD_STRUCTURE",
-          source: "Institutional Fee Master"
-        }
-      };
-    }
-
-    // Default Fallback
-    return {
-      id: String(Date.now()),
-      sender: 'ASSISTANT',
-      text: `I understand your inquiry regarding "${query}". In Phase 1, all responses are backed by our verified institutional SQLite seed database. Advanced LLM agent tool calling will activate in Phase 2/6.`,
-      timestamp: timeStr
-    };
-  };
-
-  const handleSend = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!input.trim() || isProcessing) return;
-
-    const userText = input;
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
     const userMsg: ChatMessage = {
-      id: String(Date.now()),
+      id: `user-${Date.now()}`,
       sender: 'USER',
-      text: userText,
-      timestamp: timeStr
+      text: query,
+      timestamp: timeStr,
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setIsProcessing(true);
 
-    setTimeout(() => {
-      const resp = getAssistantResponse(userText);
-      setMessages((prev) => [...prev, resp]);
+    try {
+      const res = await ApiClient.post<AIChatResponse>('/ai/chat', { message: query });
+      
+      const assistantMsg: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        sender: 'ASSISTANT',
+        text: res.answer,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        intent: res.intent,
+        toolsUsed: res.tools_used,
+        reasoningTrace: res.reasoning_trace,
+        financialData: res.financial_data,
+        status: res.status
+      };
+
+      setMessages((prev) => [...prev, assistantMsg]);
+      if (res.suggested_prompts && res.suggested_prompts.length > 0) {
+        setActivePrompts(res.suggested_prompts);
+      }
+    } catch (err: any) {
+      const errMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
+        sender: 'ASSISTANT',
+        text: `⚠️ **Financial Query Notice:** ${err.message || 'Unable to complete AI financial query at this moment. Please check your network or try again.'}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'ERROR'
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
       setIsProcessing(false);
-    }, 500);
+    }
   };
 
-  const sendQuickPrompt = (promptText: string) => {
-    setInput(promptText);
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const userMsg: ChatMessage = {
-      id: String(Date.now()),
-      sender: 'USER',
-      text: promptText,
-      timestamp: timeStr
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setIsProcessing(true);
+  const renderFinancialDataWidget = (data?: Record<string, any>, toolsUsed?: string[]) => {
+    if (!data) return null;
+    const tool = (toolsUsed && toolsUsed[0]) || data.tool;
 
-    setTimeout(() => {
-      const resp = getAssistantResponse(promptText);
-      setMessages((prev) => [...prev, resp]);
-      setIsProcessing(false);
-    }, 500);
+    // Student Fee Summary or Outstanding Card
+    if (tool === 'get_outstanding_amount' || tool === 'get_student_fee_summary') {
+      const gross = data.gross_demand || 0;
+      const net = data.net_demand || 0;
+      const paid = data.paid_amount || 0;
+      const out = data.outstanding_amount || 0;
+      const isOverdue = data.is_overdue || data.status === 'OVERDUE';
+
+      return (
+        <div className="mt-3 p-4 rounded-xl bg-slate-900 border border-slate-700 text-white space-y-3 shadow-md">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span className="text-xs font-semibold text-brand-400 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              Verified Ledger: {data.roll_no} ({data.name})
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                isOverdue
+                  ? 'bg-rose-900/80 text-rose-300 border border-rose-700'
+                  : out === 0
+                  ? 'bg-emerald-900/80 text-emerald-300 border border-emerald-700'
+                  : 'bg-amber-900/80 text-amber-300 border border-amber-700'
+              }`}
+            >
+              {data.status || (isOverdue ? 'OVERDUE' : out === 0 ? 'PAID' : 'PARTIALLY_PAID')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Gross Demand</div>
+              <div className="text-xs font-mono font-bold text-slate-200">₹{gross.toLocaleString()}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Net Payable</div>
+              <div className="text-xs font-mono font-bold text-blue-300">₹{net.toLocaleString()}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Total Paid</div>
+              <div className="text-xs font-mono font-bold text-emerald-300">₹{paid.toLocaleString()}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Outstanding</div>
+              <div className="text-xs font-mono font-bold text-amber-300">₹{out.toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Itemized Fee Breakdown
+    if (tool === 'get_fee_breakdown' && data.items) {
+      return (
+        <div className="mt-3 p-4 rounded-xl bg-slate-900 border border-slate-700 text-white space-y-2.5 shadow-md">
+          <div className="text-xs font-semibold text-brand-400 flex items-center justify-between border-b border-slate-800 pb-2">
+            <span>Itemized Fee Head Breakdown ({data.roll_no})</span>
+            <span className="text-[10px] font-mono text-slate-400">Net: ₹{(data.net_demand || 0).toLocaleString()}</span>
+          </div>
+          <div className="divide-y divide-slate-800 text-xs">
+            {data.items.map((it: any, idx: number) => (
+              <div key={idx} className="py-1.5 flex items-center justify-between">
+                <div>
+                  <span className="font-medium text-slate-200">{it.head_name}</span>
+                  <span className="ml-1 text-[10px] text-slate-500 font-mono">(P{it.priority})</span>
+                </div>
+                <div className="text-right font-mono text-[11px]">
+                  <span className="text-slate-400">₹{it.gross_amount.toLocaleString()}</span>
+                  <span className="mx-1 text-slate-600">|</span>
+                  <span className={it.outstanding_amount > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400'}>
+                    Due: ₹{it.outstanding_amount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Overdue Students Summary
+    if (tool === 'get_overdue_students' && data.students) {
+      return (
+        <div className="mt-3 p-4 rounded-xl bg-slate-900 border border-slate-700 text-white space-y-2.5 shadow-md">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span className="text-xs font-semibold text-rose-400 flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4" />
+              Overdue Students ({data.total_overdue_count} total)
+            </span>
+            <span className="text-xs font-mono font-bold text-rose-300">
+              Total Due: ₹{(data.total_overdue_amount || 0).toLocaleString()}
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {data.students.slice(0, 4).map((s: any, idx: number) => (
+              <div key={idx} className="p-2 rounded-lg bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-semibold text-slate-200">{s.name}</span>
+                  <span className="ml-2 font-mono text-[11px] text-brand-400">[{s.roll_no}]</span>
+                  <span className="ml-1 text-[10px] text-slate-400">({s.program})</span>
+                </div>
+                <div className="font-mono font-bold text-rose-300 text-xs">
+                  ₹{s.outstanding_amount.toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Reconciliation Status Widget
+    if (tool === 'get_reconciliation_status') {
+      return (
+        <div className="mt-3 p-4 rounded-xl bg-slate-900 border border-slate-700 text-white space-y-2.5 shadow-md">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span className="text-xs font-semibold text-brand-400 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-brand-400" />
+              Bank Reconciliation Health
+            </span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${data.reconciliation_health === 'RECONCILED' ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900 text-amber-300'}`}>
+              {data.reconciliation_health}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Feed Transactions</div>
+              <div className="font-mono font-bold text-slate-200">{data.total_bank_transactions}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Unmatched</div>
+              <div className="font-mono font-bold text-amber-300">{data.unmatched_transactions}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-800/80 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Exceptions</div>
+              <div className="font-mono font-bold text-rose-300">{data.open_mismatches_count}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Institutional Financial Overview
+    if (tool === 'get_financial_summary' && data.scope === 'INSTITUTIONAL_CORE') {
+      return (
+        <div className="mt-3 p-4 rounded-xl bg-slate-900 border border-slate-700 text-white space-y-3 shadow-md">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span className="text-xs font-semibold text-brand-400 flex items-center gap-1.5">
+              <Building2 className="w-4 h-4 text-brand-400" />
+              Institutional Core Financials ({data.total_students} Students)
+            </span>
+            <span className="text-xs font-bold text-emerald-400 font-mono">
+              {data.collection_rate_percentage}% Collected
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Gross Demand</div>
+              <div className="text-xs font-mono font-bold text-slate-200">₹{(data.total_gross_demand || 0).toLocaleString()}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Net Demand</div>
+              <div className="text-xs font-mono font-bold text-blue-300">₹{(data.total_net_demand || 0).toLocaleString()}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Total Collected</div>
+              <div className="text-xs font-mono font-bold text-emerald-300">₹{(data.total_collected || 0).toLocaleString()}</div>
+            </div>
+            <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">
+              <div className="text-[10px] text-slate-400">Total Due</div>
+              <div className="text-xs font-mono font-bold text-amber-300">₹{(data.total_outstanding || 0).toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Multi-Filter Planner Results Widget
+    if (tool === 'multi_filter_planner' || (data && data.tool === 'multi_filter_planner')) {
+      const sample = data.sample || [];
+      const count = data.matched_count !== undefined ? data.matched_count : sample.length;
+      return (
+        <div className="mt-3 p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-white space-y-2.5 shadow-md">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span className="text-xs font-semibold text-brand-400 flex items-center gap-1.5">
+              <Filter className="w-3.5 h-3.5 text-brand-400" />
+              Multi-Filter Matched Cohort
+            </span>
+            <span className="text-xs font-bold text-amber-400 font-mono">
+              {count} Matched
+            </span>
+          </div>
+          {sample.length > 0 ? (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              {sample.map((s: any, idx: number) => (
+                <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs">
+                  <div>
+                    <div className="font-bold text-slate-100 flex items-center gap-2">
+                      <span>{s.name}</span>
+                      <span className="text-[10px] font-mono text-brand-300 px-1 rounded bg-brand-950/80 border border-brand-800">{s.roll_no}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {s.program} • {s.category} {s.clearance_status ? `• ${s.clearance_status}` : ''}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono font-bold text-amber-300">₹{(s.outstanding || 0).toLocaleString()}</div>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                      s.status === 'OVERDUE' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
+                      s.status === 'PAID' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                      'bg-amber-950 text-amber-300 border border-amber-800'
+                    }`}>
+                      {s.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-400 italic">No individual student records in this filtered set.</div>
+          )}
+        </div>
+      );
+    }
+
+    return null;
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#edf3fd] min-h-[500px]">
-      {/* Quick Prompts Carousel Bar with All 8 Query Chips */}
-      <div className="bg-white/95 border-b border-blue-100 px-4 sm:px-6 py-2.5 overflow-x-auto flex items-center space-x-2 shrink-0">
-        <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider shrink-0 flex items-center gap-1">
-          <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-          Suggested:
-        </span>
-        {[
-          "What is the total outstanding fee?",
-          "Show payment history",
-          "Which payments are unreconciled?",
-          "Show pending refunds",
-          "Show 90+ days overdue fees",
-          "Show today's collection",
-          "Show pending approvals",
-          "Explain this student's fee demand",
-        ].map((q, idx) => (
+    <div className="flex flex-col h-full max-h-[calc(100vh-140px)] bg-[#0B0F17] rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
+      {/* Header Bar */}
+      <div className="px-5 py-3.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h3 className="text-sm font-bold text-white tracking-wide">Fee & Finance Intelligence Agent</h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                Deterministic Core
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Role: <span className="font-semibold text-brand-400">{user.role}</span> • Scoped Financial Database
+            </p>
+          </div>
+        </div>
+
+        {onOpenLedgerTab && (
           <button
-            key={idx}
-            onClick={() => sendQuickPrompt(q)}
-            className="text-xs bg-blue-50/80 hover:bg-blue-100 hover:text-brand-900 text-blue-800 border border-blue-200/70 rounded-full px-3 py-1 font-medium whitespace-nowrap transition-colors cursor-pointer"
+            onClick={onOpenLedgerTab}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors"
           >
-            {q}
+            <FileSpreadsheet className="w-3.5 h-3.5 text-brand-400" />
+            <span>Open Database Ledger</span>
           </button>
-        ))}
+        )}
       </div>
 
-      {/* Message Stream Area */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 max-w-5xl w-full mx-auto">
-        {messages.map((msg) => {
-          const isAssistant = msg.sender === 'ASSISTANT';
-
-          return (
+      {/* Message Stream */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            className={`flex ${m.sender === 'USER' ? 'justify-end' : 'justify-start'}`}
+          >
             <div
-              key={msg.id}
-              className={`rounded-2xl p-4 sm:p-5 transition-all shadow-xs border ${
-                isAssistant
-                  ? 'bg-white border-blue-100 text-slate-800'
-                  : 'bg-brand-600 border-brand-700 text-white ml-auto max-w-xl shadow-md'
+              className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-xs leading-relaxed ${
+                m.sender === 'USER'
+                  ? 'bg-brand-600 text-white shadow-md rounded-tr-none'
+                  : 'bg-slate-900/90 border border-slate-800 text-slate-200 shadow-lg rounded-tl-none'
               }`}
             >
-              {/* Header inside message */}
-              <div className="flex items-center justify-between mb-1.5">
-                <span
-                  className={`text-[12px] font-extrabold tracking-wider ${
-                    isAssistant ? 'text-[#2563eb]' : 'text-blue-100'
-                  }`}
-                >
-                  {isAssistant ? 'AGENT 40 FEE ASSISTANT' : user.full_name.toUpperCase()}
-                </span>
-                <span
-                  className={`text-[10px] font-mono ${
-                    isAssistant ? 'text-gray-400' : 'text-blue-200'
-                  }`}
-                >
-                  {msg.timestamp}
-                </span>
-              </div>
-
-              {/* Message body */}
-              <div className="text-sm sm:text-[14px] leading-relaxed whitespace-pre-line font-normal">
-                {msg.text}
-              </div>
-
-              {/* Verified Financial Card */}
-              {msg.financialData && (
-                <div className="mt-4 bg-[#f8fbff] border border-blue-200/80 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between border-b border-blue-100 pb-2">
-                    <div className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>{msg.financialData.title || 'Verified Financial Ledger'}</span>
-                    </div>
-                    {msg.financialData.status && (
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
-                        {msg.financialData.status}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Top Stats */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                    {msg.financialData.grossDemand !== undefined && (
-                      <div className="bg-white p-2.5 rounded-lg border border-blue-100">
-                        <div className="text-gray-500 text-[10px] font-medium">Gross Demand</div>
-                        <div className="text-sm font-bold text-gray-900 font-mono">
-                          ₹{msg.financialData.grossDemand.toLocaleString()}
-                        </div>
-                      </div>
-                    )}
-                    {msg.financialData.paidAmount !== undefined && (
-                      <div className="bg-white p-2.5 rounded-lg border border-blue-100">
-                        <div className="text-gray-500 text-[10px] font-medium">Reconciled Paid</div>
-                        <div className="text-sm font-bold text-emerald-600 font-mono">
-                          ₹{msg.financialData.paidAmount.toLocaleString()}
-                        </div>
-                      </div>
-                    )}
-                    {msg.financialData.outstandingAmount !== undefined && (
-                      <div className="bg-white p-2.5 rounded-lg border border-blue-100 col-span-2 sm:col-span-1">
-                        <div className="text-gray-500 text-[10px] font-medium">Outstanding Balance</div>
-                        <div className="text-sm font-bold text-red-600 font-mono">
-                          ₹{msg.financialData.outstandingAmount.toLocaleString()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Itemized Table Breakdown */}
-                  {msg.financialData.breakdown && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs border border-blue-100 rounded-lg overflow-hidden bg-white">
-                        <thead className="bg-blue-50/80 text-blue-900 font-semibold">
-                          <tr>
-                            <th className="py-2 px-3">Fee Head (Priority)</th>
-                            <th className="py-2 px-3">Gross</th>
-                            <th className="py-2 px-3">Paid</th>
-                            <th className="py-2 px-3">Outstanding</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-blue-50 text-gray-700">
-                          {msg.financialData.breakdown.map((item, i) => (
-                            <tr key={i} className="hover:bg-blue-50/40">
-                              <td className="py-1.5 px-3 font-medium text-blue-950">{item.head}</td>
-                              <td className="py-1.5 px-3 font-mono">₹{item.amount.toLocaleString()}</td>
-                              <td className="py-1.5 px-3 font-mono text-emerald-600">₹{item.paid.toLocaleString()}</td>
-                              <td className="py-1.5 px-3 font-mono font-semibold text-red-600">
-                                ₹{item.outstanding.toLocaleString()}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+              {/* Header inside assistant bubble */}
+              {m.sender === 'ASSISTANT' && (
+                <div className="flex items-center justify-between mb-2 text-[10px] text-slate-400 border-b border-slate-800 pb-1">
+                  <span className="flex items-center gap-1 font-semibold text-brand-400">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    Agent 40 Financial Core
+                  </span>
+                  {m.toolsUsed && m.toolsUsed.length > 0 && (
+                    <span className="font-mono text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">
+                      {m.toolsUsed.length > 1 ? `${m.toolsUsed.length} Tools Chained` : `Tool: ${m.toolsUsed[0]}`}
+                    </span>
                   )}
+                </div>
+              )}
 
-                  {msg.financialData.source && (
-                    <div className="text-[10px] text-gray-500 italic pt-1 flex items-center justify-between">
-                      <span>Source: {msg.financialData.source}</span>
-                      <span className="font-mono text-emerald-700 font-medium">Rule Engine: Authoritative</span>
+              {/* Message Content with simple Markdown bolding & linebreaks */}
+              <div className="whitespace-pre-line space-y-1">
+                {m.text}
+              </div>
+
+              {/* Collapsible Reasoning Trace Panel */}
+              {m.reasoningTrace && m.reasoningTrace.length > 0 && (
+                <div className="mt-2.5 rounded-xl border border-indigo-900/60 bg-indigo-950/30 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleTrace(m.id)}
+                    className="w-full px-3 py-2 flex items-center justify-between text-[11px] font-semibold text-indigo-300 hover:text-indigo-200 hover:bg-indigo-950/50 transition-colors cursor-pointer"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                      How I found this ({m.reasoningTrace.length} reasoning steps)
+                    </span>
+                    {expandedTraceIds[m.id] ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-indigo-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-indigo-400" />
+                    )}
+                  </button>
+
+                  {expandedTraceIds[m.id] && (
+                    <div className="p-3 pt-1 border-t border-indigo-900/40 space-y-2 text-[11px] bg-slate-950/60">
+                      <div className="space-y-1.5">
+                        {m.reasoningTrace.map((stepText, sIdx) => (
+                          <div key={sIdx} className="flex items-start gap-2 text-slate-300">
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-900/80 text-indigo-200 font-mono text-[9px] font-bold shrink-0 mt-0.5">
+                              Step {sIdx + 1}
+                            </span>
+                            <span className="font-mono text-[10.5px] leading-relaxed text-slate-200">
+                              {stepText}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {m.toolsUsed && m.toolsUsed.length > 0 && (
+                        <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400">Tools Chained:</span>
+                          {m.toolsUsed.map((tName, tIdx) => (
+                            <span key={tIdx} className="px-2 py-0.5 rounded-full bg-slate-800 text-[9px] font-mono text-indigo-300 border border-indigo-800/50">
+                              {tName}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
-            </div>
-          );
-        })}
 
+              {/* Structured Financial Card Widget if available */}
+              {renderFinancialDataWidget(m.financialData, m.toolsUsed)}
+
+              {/* Timestamp */}
+              <div className={`mt-2 text-[10px] text-right ${m.sender === 'USER' ? 'text-brand-200' : 'text-slate-500'}`}>
+                {m.timestamp}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Loading / Thinking Indicator */}
         {isProcessing && (
-          <div className="bg-white rounded-2xl p-4 max-w-xs border border-blue-100 shadow-xs flex items-center space-x-3">
-            <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-xs text-blue-900 font-medium">Agent 40 is querying SQLite ledger...</span>
+          <div className="flex justify-start">
+            <div className="max-w-[80%] rounded-2xl rounded-tl-none p-4 bg-slate-900 border border-slate-800 text-slate-300 text-xs shadow-lg space-y-2">
+              <div className="flex items-center space-x-2 text-brand-400 text-xs font-semibold">
+                <Sparkles className="w-4 h-4 animate-spin" />
+                <span>Consulting Authoritative Financial Tools & Scoped Database...</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <div className="w-2 h-2 rounded-full bg-brand-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-2 h-2 rounded-full bg-brand-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-2 h-2 rounded-full bg-brand-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
           </div>
         )}
 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Bottom Chat Input Form */}
-      <div className="bg-white border-t border-blue-200/80 p-4 sm:px-8 space-y-2 sticky bottom-0 z-30 shadow-lg">
-        <form onSubmit={handleSend} className="flex items-center space-x-3 max-w-5xl mx-auto">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about fee structures, student ledger, reconciliation, or overdue balances..."
-              className="w-full bg-[#f8fbff] border border-blue-200 rounded-full px-5 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200 transition-all shadow-inner"
-            />
-          </div>
+      {/* Suggested Quick Prompts */}
+      <div className="px-5 py-2.5 bg-slate-900/40 border-t border-slate-800/80 flex flex-wrap gap-1.5 items-center">
+        <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1 flex items-center gap-1">
+          <HelpCircle className="w-3 h-3 text-brand-400" />
+          Suggested:
+        </span>
+        {activePrompts.map((p, idx) => (
+          <button
+            key={idx}
+            onClick={() => handleSendMessage(p)}
+            disabled={isProcessing}
+            className="px-2.5 py-1 rounded-full bg-slate-800/80 hover:bg-brand-900/60 hover:border-brand-500 text-slate-300 hover:text-white text-[11px] border border-slate-700 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {p}
+          </button>
+        ))}
+      </div>
 
+      {/* Input Form */}
+      <div className="p-4 bg-slate-900/90 border-t border-slate-800">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendMessage();
+          }}
+          className="flex items-center gap-2"
+        >
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={`Ask financial questions (e.g., "${activePrompts[0] || 'What is my outstanding fee?'}")`}
+            disabled={isProcessing}
+            className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all disabled:opacity-50"
+          />
           <button
             type="submit"
             disabled={!input.trim() || isProcessing}
-            className="w-11 h-11 rounded-full bg-brand-600 hover:bg-brand-500 active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-brand-500/30 disabled:opacity-40 disabled:scale-100 cursor-pointer"
-            title="Send Query"
+            className="px-4 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md cursor-pointer disabled:cursor-not-allowed"
           >
-            <Send className="w-4 h-4 ml-0.5" />
+            <span>Ask</span>
+            <Send className="w-3.5 h-3.5" />
           </button>
         </form>
 
-        {/* Footer Sub-Bar */}
-        <div className="max-w-5xl mx-auto flex items-center justify-between text-xs text-gray-500 pt-1 px-2 select-none">
-          <div className="flex items-center space-x-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span className="font-semibold text-gray-600">● Core Ledger Online (SQLite)</span>
-          </div>
-
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-1.5 text-gray-600">
-              <Mic className="w-3.5 h-3.5 text-brand-600" />
-              <span>Voice + transcript assistant</span>
-            </div>
-
-            {onOpenLedgerTab && (
-              <button
-                onClick={onOpenLedgerTab}
-                className="hidden md:inline-flex items-center space-x-1 text-xs text-brand-700 font-semibold hover:underline cursor-pointer pl-2 border-l border-gray-300"
-              >
-                <Database className="w-3 h-3" />
-                <span>View Full Database Ledger</span>
-              </button>
-            )}
-          </div>
+        <div className="mt-2 text-[10px] text-slate-500 text-center flex items-center justify-center gap-1.5">
+          <ShieldCheck className="w-3 h-3 text-emerald-500" />
+          <span>Read-only assistant. Financial actions (refunds, reversals, waivers) require authorized staff approval.</span>
         </div>
       </div>
     </div>

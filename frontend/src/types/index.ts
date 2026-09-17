@@ -65,10 +65,10 @@ export interface LedgerStats {
   total_payments: number;
   reconciled_payments: number;
   unreconciled_payments: number;
-  mismatches: number;
-  pending_approvals: number;
-  pending_refunds: number;
-  collection_percentage: number;
+  mismatches?: number;
+  pending_approvals?: number;
+  pending_refunds?: number;
+  collection_percentage?: number;
 }
 
 export interface StudentRecord {
@@ -76,10 +76,17 @@ export interface StudentRecord {
   roll_no: string;
   name: string;
   email: string;
+  phone?: string;
   program_code: string;
   program_name: string;
   academic_year: string;
   category: string;
+  admission_route?: string;
+  admission_route_name?: string;
+  entrance_exam?: string;
+  entrance_score?: number | null;
+  entrance_rank?: number | null;
+  quota_details?: string;
   semester: number;
   enrollment_status: string;
   gross_demand: number;
@@ -91,6 +98,8 @@ export interface StudentRecord {
   outstanding_amount: number;
   demand_status: string;
   due_date: string;
+  scholarships?: Array<{ name: string; amount: number; code?: string; authority?: string }>;
+  concessions?: Array<{ reason: string; amount: number; code?: string; approved_by?: string }>;
 }
 
 export interface FeeHeadItem {
@@ -241,6 +250,100 @@ export interface ReceiptResponse {
   cumulative_paid: number;
   remaining_outstanding: number;
   fee_head_items: ReceiptFeeItem[];
+}
+
+export interface AIChatRequest {
+  message: string;
+  conversation_id?: string;
+}
+
+export interface AIChatResponse {
+  answer: string;
+  intent: string;
+  tools_used: string[];
+  reasoning_trace?: string[];
+  financial_data?: Record<string, any>;
+  suggested_prompts: string[];
+  role: string;
+  status: string;
+}
+
+export interface RiskFactorBreakdown {
+  factor: string;
+  points: number;
+  max_points: number;
+  explanation: string;
+}
+
+export interface RiskScoreResponse {
+  student_id: string;
+  roll_no: string;
+  student_name: string;
+  program_code?: string;
+  risk_score: number;
+  risk_tier: 'LOW' | 'MEDIUM' | 'HIGH';
+  contributing_factors: RiskFactorBreakdown[];
+  calculated_at?: string;
+  primary_reason?: string;
+}
+
+export interface RiskDashboardSummary {
+  total_students: number;
+  distribution: {
+    LOW: number;
+    MEDIUM: number;
+    HIGH: number;
+  };
+  top_high_risk: Array<{
+    student_id: string;
+    roll_no: string;
+    student_name: string;
+    program_code: string;
+    risk_score: number;
+    risk_tier: 'LOW' | 'MEDIUM' | 'HIGH';
+    primary_reason: string;
+    contributing_factors: RiskFactorBreakdown[];
+  }>;
+}
+
+export interface CollectionTrendItem {
+  month: string;
+  collected: number;
+  target: number;
+  achievement_percentage: number;
+}
+
+export interface CollectionTrendResponse {
+  data: CollectionTrendItem[];
+  total_collected_6m: number;
+  average_monthly: number;
+}
+
+export interface AgingDistributionItem {
+  bucket: string;
+  bucket_code: string;
+  amount: number;
+  count: number;
+  color: string;
+}
+
+export interface AgingDistributionResponse {
+  data: AgingDistributionItem[];
+  total_outstanding: number;
+  total_defaulters: number;
+}
+
+export interface HeatmapCellDetail {
+  count: number;
+  amount: number;
+  student_ids: string[];
+}
+
+export interface ProgramDefaulterHeatmapResponse {
+  programs: string[];
+  buckets: string[];
+  matrix: number[][];
+  details: Record<string, HeatmapCellDetail>;
 }
 
 

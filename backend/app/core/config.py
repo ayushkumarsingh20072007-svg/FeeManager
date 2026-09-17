@@ -3,6 +3,9 @@ from typing import List, Union
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_DEFAULT_DB_PATH = os.path.join(_BACKEND_DIR, "agent40.db").replace("\\", "/")
+
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     APP_NAME: str = "Agent40-FeeManagement"
@@ -11,8 +14,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
-    # Database URL: defaults to SQLite for local zero-dependency run, postgresql+psycopg supported
-    DATABASE_URL: str = "sqlite:///./agent40.db"
+    # Database URL: defaults to canonical SQLite for local zero-dependency run, postgresql+psycopg supported
+    DATABASE_URL: str = f"sqlite:///{_DEFAULT_DB_PATH}"
     
     # Security / JWT
     JWT_SECRET: str = "agent40-super-secret-jwt-key-for-local-development-must-be-changed-in-prod"

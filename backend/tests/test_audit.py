@@ -39,7 +39,7 @@ def test_audit_logs_api_accessible_by_admin(client: TestClient):
 
 def test_audit_logs_api_blocked_for_students(client: TestClient):
     # Login as student
-    login_resp = client.post("/api/v1/auth/login", json={"email": "aravind.k@student.edu", "password": "password123"})
+    login_resp = client.post("/api/v1/auth/login", json={"email": "aravind.k@student.edu", "password": "STU1001"})
     token = login_resp.json()["access_token"]
     
     headers = {"Authorization": f"Bearer {token}"}

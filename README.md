@@ -63,17 +63,19 @@ Frontend web application will be accessible at `http://localhost:5173`
 
 ---
 
-## 🔑 Demo Seed Accounts (Password: `password123` for all)
+## 🔑 Demo Seed Accounts
+> **Staff / Admin Password**: `password123`  
+> **Student Password**: Strictly that student's **Student ID / Roll Number** (e.g. `STU1001`, `STU1002`) for zero-trust student data isolation.
 
-| Role | Email | Purpose |
-| :--- | :--- | :--- |
-| **ACCOUNTS_OFFICER** | `accounts@university.edu` | Full fee operations, payments, reconciliation |
-| **FINANCE_APPROVER** | `finance.approver@university.edu` | Sensitive financial approvals & refunds |
-| **MANAGEMENT** | `director@university.edu` | Executive analytics, aging & collection dashboards |
-| **ADMIN** | `admin@university.edu` | Master configuration, fee structures & versions |
-| **STUDENT** | `aravind.k@student.edu` | B.Tech CSE Student (General Category) |
-| **STUDENT** | `priya.s@student.edu` | B.Tech ECE Student (Scholarship Recipient) |
-| **PARENT** | `parent.aravind@gmail.com` | Dependent Fee Portal |
+| Role | Email / Login ID | Password | Purpose |
+| :--- | :--- | :--- | :--- |
+| **ACCOUNTS_OFFICER** | `accounts@university.edu` | `password123` | Full fee operations, payments, reconciliation |
+| **FINANCE_APPROVER** | `finance.approver@university.edu` | `password123` | Sensitive financial approvals & refunds |
+| **MANAGEMENT** | `director@university.edu` | `password123` | Executive analytics, aging & collection dashboards |
+| **ADMIN** | `admin@university.edu` | `password123` | Master configuration, fee structures & versions |
+| **STUDENT** | `aravind.k@student.edu` *(or `STU1001`)* | `STU1001` | B.Tech CSE Student (General Category) |
+| **STUDENT** | `priya.s@student.edu` *(or `STU1002`)* | `STU1002` | B.Tech ECE Student (Scholarship Recipient) |
+| **PARENT** | `parent.aravind@gmail.com` | `password123` | Dependent Fee Portal |
 
 ---
 

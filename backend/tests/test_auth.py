@@ -16,10 +16,10 @@ def test_login_successful_for_accounts_officer(client: TestClient):
     assert data["user"]["email"] == "accounts@university.edu"
 
 def test_login_successful_for_student(client: TestClient):
-    """Verifies that a student user receives profile info with roll number and student ID."""
+    """Verifies that a student user can log in using their email and Student ID as password."""
     payload = {
         "email": "aravind.k@student.edu",
-        "password": "password123"
+        "password": "STU1001"
     }
     response = client.post("/api/v1/auth/login", json=payload)
     assert response.status_code == 200
@@ -27,6 +27,28 @@ def test_login_successful_for_student(client: TestClient):
     assert data["user"]["role"] == "STUDENT"
     assert data["user"]["roll_no"] == "STU1001"
     assert data["user"]["student_id"] is not None
+
+def test_login_student_using_student_id_identifier(client: TestClient):
+    """Verifies that a student can log in using their Student ID (STU1001) as the identifier and password."""
+    payload = {
+        "email": "STU1001",
+        "password": "STU1001"
+    }
+    response = client.post("/api/v1/auth/login", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user"]["role"] == "STUDENT"
+    assert data["user"]["roll_no"] == "STU1001"
+
+def test_student_cannot_login_with_generic_password123(client: TestClient):
+    """Verifies that student accounts CANNOT be opened with password123, strictly enforcing Student ID."""
+    payload = {
+        "email": "aravind.k@student.edu",
+        "password": "password123"
+    }
+    response = client.post("/api/v1/auth/login", json=payload)
+    assert response.status_code == 401
+    assert "Invalid email or password" in response.json()["detail"]
 
 def test_login_invalid_password_fails(client: TestClient):
     """Verifies that wrong credentials are rejected with HTTP 401."""

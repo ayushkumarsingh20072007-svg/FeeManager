@@ -24,7 +24,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 def get_auth_token(client: TestClient, email: str) -> str:
-    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": "password123"})
+    student_pw_map = {
+        "aravind.k@student.edu": "STU1001",
+        "priya.s@student.edu": "STU1002",
+        "kiran.v@student.edu": "STU1003",
+    }
+    password = student_pw_map.get(email, "password123")
+    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert login_resp.status_code == 200
     return login_resp.json()["access_token"]
 
@@ -135,8 +141,8 @@ def test_student_stats_scoped_to_self(client: TestClient):
     stats = resp.json()
     assert stats["total_students"] == 1
     assert stats["total_demand"] == 178000.0
-    assert stats["total_collected"] == 148000.0
-    assert stats["total_outstanding"] == 30000.0
+    assert stats["total_collected"] == 178000.0
+    assert stats["total_outstanding"] == 0.0
 
 # 9. Parent can access linked child
 def test_parent_can_access_linked_child(client: TestClient):
@@ -188,18 +194,18 @@ def test_parent_cannot_access_unrelated_payments(client: TestClient):
     for p in payments:
         assert p["student_roll"] == "STU1001"
 
-# 13. Accounts Officer can access all 28 students
+# 13. Accounts Officer can access all students
 def test_accounts_officer_can_access_all_students(client: TestClient):
     token_accounts = get_auth_token(client, "accounts@university.edu")
     headers = {"Authorization": f"Bearer {token_accounts}"}
 
-    resp = client.get("/api/v1/ledger/students?limit=100", headers=headers)
+    resp = client.get("/api/v1/ledger/students?limit=300", headers=headers)
     assert resp.status_code == 200
-    assert len(resp.json()) == 28
+    assert len(resp.json()) == 200
 
     resp_stats = client.get("/api/v1/ledger/stats", headers=headers)
     assert resp_stats.status_code == 200
-    assert resp_stats.json()["total_students"] == 28
+    assert resp_stats.json()["total_students"] == 200
 
 # 14. Finance Approver retains authorized financial access
 def test_finance_approver_retains_authorized_financial_access(client: TestClient):
@@ -208,7 +214,7 @@ def test_finance_approver_retains_authorized_financial_access(client: TestClient
 
     resp_stats = client.get("/api/v1/ledger/stats", headers=headers)
     assert resp_stats.status_code == 200
-    assert resp_stats.json()["total_students"] == 28
+    assert resp_stats.json()["total_students"] == 200
 
     resp_approvals = client.get("/api/v1/ledger/approvals", headers=headers)
     assert resp_approvals.status_code == 200

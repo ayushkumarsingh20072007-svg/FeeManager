@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, Boolean, Integer, Float, ForeignKey, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.models.base import TimestampMixin, generate_uuid
@@ -68,6 +68,13 @@ class Student(Base, TimestampMixin):
     
     current_semester = Column(Integer, default=1, nullable=False)
     enrollment_status = Column(String(50), default="ACTIVE", nullable=False)  # ACTIVE, WITHDRAWN, GRADUATED, SUSPENDED
+    attendance_percentage = Column(Float, default=85.0, nullable=True)         # Semester attendance e.g. 86.5% (Min 75.0% required)
+    cgpa = Column(Float, default=8.2, nullable=True)                          # Current cumulative GPA e.g. 8.4 (Min 7.50 required for scholarship)
+    
+    entrance_exam = Column(String(50), nullable=True)          # e.g., "JEE_MAINS", "VSAT", "EAMCET", "RESERVED_CATEGORY", "SPECIAL_STATE"
+    entrance_score = Column(Float, nullable=True)             # e.g., 96.5 for JEE percentile
+    entrance_rank = Column(Integer, nullable=True)            # e.g., 142 for V-SAT or State rank
+    quota_details = Column(String(200), nullable=True)        # e.g., "JEE 95+ Percentile Quota (75% Tuition Scholarship)"
 
     # Relationships
     user = relationship("User", back_populates="student_profile", foreign_keys=[user_id])

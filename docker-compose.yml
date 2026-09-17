@@ -1,50 +1,94 @@
-version: '3.8'
+# =============================================================================
+# Agent 40 — Docker Compose (Production)
+# Run with: docker compose up --build -d
+# =============================================================================
 
 services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: agent40_backend
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql+psycopg://agent40_user:agent40_password@postgres:5432/agent40_db
-      - JWT_SECRET=production-grade-super-secret-key-for-jwt-tokens-here
-      - ENVIRONMENT=production
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: agent40_frontend
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
-
+  # ── PostgreSQL Database ─────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: agent40_postgres
     environment:
-      POSTGRES_USER: agent40_user
-      POSTGRES_PASSWORD: agent40_password
-      POSTGRES_DB: agent40_db
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-agent40_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agent40_password}
+      POSTGRES_DB: ${POSTGRES_DB:-agent40_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - agent40_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agent40_user -d agent40_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent40_user} -d ${POSTGRES_DB:-agent40_db}"]
       interval: 5s
       timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    # NOTE: Port 5432 is intentionally NOT exposed to host in production.
+    # Only backend can reach Postgres via the internal Docker network.
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: agent40_backend
+    env_file:
+      - .env.production
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-agent40_user}:${POSTGRES_PASSWORD:-agent40_password}@postgres:5432/${POSTGRES_DB:-agent40_db}
+      - ENVIRONMENT=production
+      - UVICORN_WORKERS=2
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - agent40_network
+    volumes:
+      - backend_uploads:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
       retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    # Backend is NOT exposed directly — only Nginx reaches it via internal network
+
+  # ── React Frontend (Nginx) ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: agent40_frontend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - agent40_network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:80"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  agent40_network:
+    driver: bridge
+    name: agent40_network
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
+    driver: local
+    name: agent40_postgres_data
+  backend_uploads:
+    driver: local
+    name: agent40_backend_uploads
