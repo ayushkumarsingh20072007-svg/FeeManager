@@ -33,6 +33,7 @@ ENV/
 *.sqlite3
 *.sqlite
 agent40.db
+!backend/agent40.db
 
 # Node / Frontend
 node_modules/
