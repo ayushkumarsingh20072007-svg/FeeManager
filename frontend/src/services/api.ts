@@ -1,4 +1,5 @@
-const API_BASE = '/api/v1';
+const BACKEND_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+const API_BASE = BACKEND_BASE ? `${BACKEND_BASE}/api/v1` : '/api/v1';
 
 export class ApiClient {
   private static getHeaders(contentType: boolean = true): HeadersInit {
@@ -84,7 +85,8 @@ export class ApiClient {
   }
 
   public static async getHealth(): Promise<any> {
-    const res = await fetch('/health');
+    const healthUrl = BACKEND_BASE ? `${BACKEND_BASE}/health` : '/health';
+    const res = await fetch(healthUrl);
     if (!res.ok) throw new Error('Health check failed');
     return res.json();
   }

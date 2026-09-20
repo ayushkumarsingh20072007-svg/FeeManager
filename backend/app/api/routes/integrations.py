@@ -16,6 +16,8 @@ from app.schemas.integrations import (
     ScholarshipSyncResponse,
     NotificationDispatchRequest,
     NotificationLogResponse,
+    RiskReminderTriggerRequest,
+    RiskReminderTriggerResponse,
     CashflowForecastResponse,
     ExamPermissionRequestCreate,
     ExamPermissionResponse,
@@ -27,6 +29,7 @@ from app.services.clearance_service import ClearanceService
 from app.services.notification_service import NotificationService
 from app.services.forecasting_service import ForecastingService
 from app.services.audit_service import AuditService
+from app.rules.risk_engine import calculate_default_risk
 
 router = APIRouter(prefix="/integrations", tags=["Inter-Agent Integrations & Enterprise Hub"])
 
@@ -104,6 +107,78 @@ def get_notification_logs(
         student_roll=student_roll,
         event_type=event_type,
         limit=limit
+    )
+
+@router.post("/notifications/trigger-risk-reminder", response_model=RiskReminderTriggerResponse)
+def trigger_risk_reminder(
+    payload: RiskReminderTriggerRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.ACCOUNTS_OFFICER, UserRole.SYSTEM_ADMIN))
+) -> RiskReminderTriggerResponse:
+    """
+    Manual trigger: send an overdue fee reminder to a single high-risk student via
+    SMS / WhatsApp (+ any other channels in the request).  Intended as a demo-day
+    button — callers control exactly when it fires.
+    """
+    # Look up student to get email and validate existence
+    student = (
+        db.query(Student)
+        .filter((Student.roll_no == payload.student_roll) | (Student.id == payload.student_roll))
+        .first()
+    )
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Student '{payload.student_roll}' not found in financial system."
+        )
+
+    # Resolve student's display name safely (name lives on linked User, not Student directly)
+    student_name = (student.user.full_name if student.user else None) or student.roll_no
+
+    # Compute risk score for message personalisation
+    try:
+        risk_data = calculate_default_risk(student_or_id=student, db=db)
+        risk_score = risk_data.get("risk_score", 0)
+        # Pull the top contributing factor's explanation as the primary reason
+        factors = risk_data.get("contributing_factors", [])
+        top_factor = max(factors, key=lambda f: f.get("points", 0)) if factors else None
+        primary_reason = top_factor["explanation"] if top_factor else "Outstanding fees overdue"
+    except Exception:
+        risk_score = 0
+        primary_reason = "Outstanding fees overdue"
+
+    recipient_email = payload.recipient_email or (student.user.email if student.user else "")
+    recipient_phone = payload.recipient_phone
+
+    message = (
+        f"URGENT — Fee Reminder for {student_name} ({student.roll_no}): "
+        f"You have overdue fees with a risk score of {risk_score}/100. "
+        f"Primary concern: {primary_reason}. "
+        f"Please contact the Finance Office immediately to avoid examination hold."
+    )
+
+    dispatch_request = NotificationDispatchRequest(
+        event_type="OVERDUE_AGING_REMINDER",
+        recipient_email=recipient_email,
+        recipient_phone=recipient_phone,
+        student_roll=student.roll_no,
+        subject=f"Urgent Fee Reminder — {student_name} [{student.roll_no}]",
+        message_body=message,
+        channels=payload.channels
+    )
+
+    result = NotificationService.dispatch_notification(
+        db=db,
+        request=dispatch_request,
+        current_user=current_user
+    )
+
+    return RiskReminderTriggerResponse(
+        student_roll=student.roll_no,
+        status=result.status,
+        delivery_results=result.delivery_results,
+        notification_id=result.id,
+        message=f"Reminder dispatched via {', '.join(payload.channels)} - status: {result.status}"
     )
 
 @router.get("/analytics/cashflow-forecast", response_model=CashflowForecastResponse)

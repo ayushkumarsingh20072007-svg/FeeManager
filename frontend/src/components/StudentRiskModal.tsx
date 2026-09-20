@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, ShieldAlert, AlertTriangle, CheckCircle2, Bell, Info, Calculator } from 'lucide-react';
+import { X, ShieldAlert, AlertTriangle, CheckCircle2, Bell, Info, Calculator, Loader2 } from 'lucide-react';
 import { ApiClient } from '../services/api';
 import { RiskScoreResponse } from '../types';
 
@@ -18,6 +18,8 @@ export const StudentRiskModal: React.FC<StudentRiskModalProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notified, setNotified] = useState<boolean>(false);
+  const [sending, setSending] = useState<boolean>(false);
+  const [sendStatus, setSendStatus] = useState<'idle' | 'success' | 'simulated' | 'error'>('idle');
 
   useEffect(() => {
     setLoading(true);
@@ -28,10 +30,25 @@ export const StudentRiskModal: React.FC<StudentRiskModalProps> = ({
       .finally(() => setLoading(false));
   }, [studentIdOrRoll]);
 
-  const handleNotifyClick = () => {
-    setNotified(true);
-    if (onNotify && riskData) {
-      onNotify(riskData.roll_no);
+  const handleNotifyClick = async () => {
+    if (!riskData || sending) return;
+    setSending(true);
+    try {
+      const result = await ApiClient.post<{ status: string; message: string }>(
+        '/integrations/notifications/trigger-risk-reminder',
+        {
+          student_roll: riskData.roll_no,
+          channels: ['SMS', 'WHATSAPP', 'IN_APP'],
+        }
+      );
+      setNotified(true);
+      const s = result.status.toLowerCase();
+      setSendStatus(s === 'delivered' ? 'success' : s === 'simulated' ? 'simulated' : 'error');
+      if (onNotify) onNotify(riskData.roll_no);
+    } catch {
+      setSendStatus('error');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -201,27 +218,46 @@ export const StudentRiskModal: React.FC<StudentRiskModalProps> = ({
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
           {riskData && (
-            <button
-              onClick={handleNotifyClick}
-              disabled={notified}
-              className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                notified
-                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                  : 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
-              }`}
-            >
-              {notified ? (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Follow-up Logged
-                </>
-              ) : (
-                <>
-                  <Bell className="w-3.5 h-3.5" />
-                  Notify Student / Parent
-                </>
+            <div className="flex flex-col gap-1.5">
+              <button
+                id={`modal-notify-btn-${riskData.roll_no}`}
+                onClick={handleNotifyClick}
+                disabled={notified || sending}
+                className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                  notified
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    : sending
+                    ? 'bg-amber-200 text-amber-900 border border-amber-300 cursor-wait'
+                    : 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
+                }`}
+              >
+                {sending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Sending via Twilio…
+                  </>
+                ) : notified ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Reminder Sent
+                  </>
+                ) : (
+                  <>
+                    <Bell className="w-3.5 h-3.5" />
+                    Send Reminder Now
+                  </>
+                )}
+              </button>
+              {sendStatus === 'simulated' && (
+                <span className="text-[10px] text-amber-700 font-medium">⚡ Logged (simulated — Twilio not configured)</span>
               )}
-            </button>
+              {sendStatus === 'success' && (
+                <span className="text-[10px] text-emerald-700 font-medium">✓ Delivered via Twilio SMS/WhatsApp</span>
+              )}
+              {sendStatus === 'error' && (
+                <span className="text-[10px] text-red-600 font-medium">⚠ Dispatch issue — check logs</span>
+              )}
+            </div>
           )}
           <button
             onClick={onClose}

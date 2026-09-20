@@ -78,6 +78,21 @@ class NotificationLogResponse(BaseModel):
     status: str
     dispatched_at: datetime
     content_preview: str
+    recipient_phone: Optional[str] = None
+    delivery_results: Optional[Dict[str, Any]] = None
+
+class RiskReminderTriggerRequest(BaseModel):
+    student_roll: str = Field(..., description="Roll number of the high-risk student to remind")
+    channels: List[str] = Field(default=["SMS", "WHATSAPP", "IN_APP"], description="Channels to dispatch the reminder via")
+    recipient_email: Optional[str] = Field(None, description="Email override; looked up from DB if omitted")
+    recipient_phone: Optional[str] = Field(None, description="Phone override; required for SMS/WhatsApp")
+
+class RiskReminderTriggerResponse(BaseModel):
+    student_roll: str
+    status: str
+    delivery_results: Optional[Dict[str, Any]] = None
+    notification_id: str
+    message: str
 
 class CashflowForecastResponse(BaseModel):
     forecast_date: date

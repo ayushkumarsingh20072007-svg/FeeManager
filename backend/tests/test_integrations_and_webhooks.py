@@ -2,6 +2,7 @@ import hmac
 import hashlib
 import json
 import pytest
+from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from app.main import app
 from app.services.webhook_service import DEFAULT_WEBHOOK_SECRETS
@@ -156,7 +157,8 @@ def test_notification_dispatch_and_logging():
     )
     assert dispatch_res.status_code == 200
     d_data = dispatch_res.json()
-    assert d_data["status"] == "DELIVERED"
+    # Status is SIMULATED when no Twilio credentials are configured (graceful degradation)
+    assert d_data["status"] in ("DELIVERED", "SIMULATED")
     assert d_data["student_roll"] == "STU1001"
 
     # List notification logs
@@ -182,3 +184,115 @@ def test_cashflow_forecasting_api():
     assert data["projected_total_realization"] > 0
     assert len(data["bucket_breakdown"]) >= 3
     assert len(data["program_breakdown"]) >= 1
+
+
+# ─────────────────────────────────────────────────────────────────
+# Twilio Integration Unit Tests (Tasks 2 & 5)
+# ─────────────────────────────────────────────────────────────────
+
+def test_notification_twilio_no_config_returns_simulated():
+    """
+    When Twilio is not configured (get_twilio_client returns None),
+    SMS/WhatsApp channels degrade gracefully to SIMULATED status.
+    The HTTP response must still be 200 — never a 500.
+    """
+    token = get_auth_token("accounts@university.edu")
+    payload = {
+        "event_type": "OVERDUE_REMINDER",
+        "recipient_email": "aravind.k@student.edu",
+        "recipient_phone": "+911234567890",
+        "student_roll": "STU1001",
+        "subject": "Fee Reminder — Test",
+        "message_body": "Your fee balance is overdue.",
+        "channels": ["SMS", "WHATSAPP", "IN_APP"]
+    }
+    # Patch get_twilio_client at the service level to ensure None is returned
+    with patch("app.services.notification_service.get_twilio_client", return_value=None):
+        res = client.post(
+            "/api/v1/integrations/notifications/dispatch",
+            headers={"Authorization": f"Bearer {token}"},
+            json=payload
+        )
+    assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.text}"
+    data = res.json()
+    assert data["status"] == "SIMULATED", f"Expected SIMULATED, got {data['status']}"
+    # delivery_results should indicate why each channel was simulated
+    assert data["delivery_results"] is not None
+    for channel in ["SMS", "WHATSAPP"]:
+        assert channel in data["delivery_results"]
+        assert data["delivery_results"][channel]["status"] == "SIMULATED"
+
+
+def test_notification_twilio_mock_success_returns_delivered():
+    """
+    When Twilio client is mocked to return a successful message SID,
+    dispatch returns DELIVERED with provider_sid in delivery_results.
+    """
+    token = get_auth_token("accounts@university.edu")
+    payload = {
+        "event_type": "OVERDUE_REMINDER",
+        "recipient_email": "aravind.k@student.edu",
+        "recipient_phone": "+911234567890",
+        "student_roll": "STU1001",
+        "subject": "Fee Reminder — Test",
+        "message_body": "Your fee balance is overdue.",
+        "channels": ["SMS"]
+    }
+
+    mock_message = MagicMock()
+    mock_message.sid = "SMtest_provider_sid_12345"
+
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = mock_message
+
+    with patch("app.services.notification_service.get_twilio_client", return_value=mock_client):
+        with patch("app.core.config.settings.TWILIO_SMS_FROM", "+15551234567"):
+            res = client.post(
+                "/api/v1/integrations/notifications/dispatch",
+                headers={"Authorization": f"Bearer {token}"},
+                json=payload
+            )
+    assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.text}"
+    data = res.json()
+    assert data["status"] == "DELIVERED", f"Expected DELIVERED, got {data['status']}"
+    assert data["delivery_results"] is not None
+    assert data["delivery_results"]["SMS"]["status"] == "SENT"
+    assert data["delivery_results"]["SMS"]["provider_sid"] == "SMtest_provider_sid_12345"
+
+
+def test_notification_twilio_exception_returns_failed_not_500():
+    """
+    When Twilio raises an exception (e.g. network error), dispatch must:
+    - Return HTTP 200 (never crash the API with a 500)
+    - Set channel status to FAILED with an error string
+    - Set overall status to FAILED or PARTIALLY_DELIVERED
+    """
+    token = get_auth_token("accounts@university.edu")
+    payload = {
+        "event_type": "OVERDUE_REMINDER",
+        "recipient_email": "aravind.k@student.edu",
+        "recipient_phone": "+911234567890",
+        "student_roll": "STU1001",
+        "subject": "Fee Reminder — Test",
+        "message_body": "Your fee balance is overdue.",
+        "channels": ["SMS"]
+    }
+
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = Exception("Twilio connection timeout")
+
+    with patch("app.services.notification_service.get_twilio_client", return_value=mock_client):
+        with patch("app.core.config.settings.TWILIO_SMS_FROM", "+15551234567"):
+            res = client.post(
+                "/api/v1/integrations/notifications/dispatch",
+                headers={"Authorization": f"Bearer {token}"},
+                json=payload
+            )
+    # MUST be 200 — Twilio failures must never crash the request
+    assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.text}"
+    data = res.json()
+    assert data["status"] == "FAILED", f"Expected FAILED, got {data['status']}"
+    assert data["delivery_results"] is not None
+    assert data["delivery_results"]["SMS"]["status"] == "FAILED"
+    assert "error" in data["delivery_results"]["SMS"]
+    assert "Twilio connection timeout" in data["delivery_results"]["SMS"]["error"]
