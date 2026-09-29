@@ -23,6 +23,7 @@ if os.environ.get("VERCEL"):
     os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
 
 from app.main import app
+from mangum import Mangum
 
-# ASGI callable for Vercel
-handler = app
+# ASGI callable for Vercel (via Mangum adapter)
+handler = Mangum(app, lifespan="off")
