@@ -20,8 +20,9 @@ if os.environ.get("VERCEL"):
                 shutil.copyfile(source_db, tmp_db)
             except Exception as err:
                 print(f"[Vercel] Warning: could not copy pre-seeded database: {err}")
-    os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
-
+    current_db = os.environ.get("DATABASE_URL", "")
+    if not current_db or current_db.startswith("sqlite"):
+        os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
 from app.main import app
 from mangum import Mangum
 

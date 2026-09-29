@@ -14,3 +14,5 @@ reportlab>=4.1.0
 langsmith>=0.0.1
 twilio>=9.0.0
 mangum>=0.17.0
+psycopg[binary]>=3.1.0
+google-genai>=0.1.0
