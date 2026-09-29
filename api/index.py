@@ -4,46 +4,25 @@ import shutil
 
 # Add backend directory to sys.path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BACKEND_DIR = os.path.join(BASE_DIR, "backend")
+BACKEND_DIR = os.path.join(BASE_DIR, 'backend')
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 # Prepare writable SQLite database in /tmp for Vercel Serverless environment
-tmp_db = "/tmp/agent40.db"
-if os.environ.get("VERCEL"):
+tmp_db = '/tmp/agent40.db'
+if os.environ.get('VERCEL'):
     if not os.path.exists(tmp_db):
-        source_db = os.path.join(BACKEND_DIR, "agent40.db")
+        source_db = os.path.join(BACKEND_DIR, 'agent40.db')
         if not os.path.exists(source_db):
-            source_db = os.path.join(BASE_DIR, "agent40.db")
+            source_db = os.path.join(BASE_DIR, 'agent40.db')
         if os.path.exists(source_db):
             try:
                 shutil.copyfile(source_db, tmp_db)
             except Exception as err:
-                print(f"[Vercel] Warning: could not copy pre-seeded database: {err}")
-    current_db = os.environ.get("DATABASE_URL", "")
-    if not current_db or current_db.startswith("sqlite"):
-        os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
-import traceback
+                print(f'[Vercel] Warning: could not copy pre-seeded database: {err}')
+    current_db = os.environ.get('DATABASE_URL', '')
+    if not current_db or current_db.startswith('sqlite'):
+        os.environ['DATABASE_URL'] = f'sqlite:///{tmp_db}'
 
-try:
-    from app.main import app
-    from mangum import Mangum
-    handler = Mangum(app, lifespan="off")
-except Exception as e:
-    error_trace = traceback.format_exc()
-    print(f"FAILED TO IMPORT APP: {error_trace}")
-    
-    async def app(scope, receive, send):
-        assert scope['type'] == 'http'
-        await send({
-            'type': 'http.response.start',
-            'status': 500,
-            'headers': [
-                [b'content-type', b'text/plain'],
-            ]
-        })
-        await send({
-            'type': 'http.response.body',
-            'body': f"Vercel Python Error:\n{error_trace}".encode('utf-8'),
-        })
-    handler = app
+from app.main import app
+
