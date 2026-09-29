@@ -23,8 +23,27 @@ if os.environ.get("VERCEL"):
     current_db = os.environ.get("DATABASE_URL", "")
     if not current_db or current_db.startswith("sqlite"):
         os.environ["DATABASE_URL"] = f"sqlite:///{tmp_db}"
-from app.main import app
-from mangum import Mangum
+import traceback
 
-# ASGI callable for Vercel (via Mangum adapter)
-handler = Mangum(app, lifespan="off")
+try:
+    from app.main import app
+    from mangum import Mangum
+    handler = Mangum(app, lifespan="off")
+except Exception as e:
+    error_trace = traceback.format_exc()
+    print(f"FAILED TO IMPORT APP: {error_trace}")
+    
+    async def app(scope, receive, send):
+        assert scope['type'] == 'http'
+        await send({
+            'type': 'http.response.start',
+            'status': 500,
+            'headers': [
+                [b'content-type', b'text/plain'],
+            ]
+        })
+        await send({
+            'type': 'http.response.body',
+            'body': f"Vercel Python Error:\n{error_trace}".encode('utf-8'),
+        })
+    handler = app
